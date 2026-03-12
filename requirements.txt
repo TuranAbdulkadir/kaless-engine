@@ -1,0 +1,31 @@
+# KALESS Statistical Engine - Dependencies
+# Core
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+httpx==0.28.1
+
+# Data Processing
+pandas==2.2.3
+numpy==2.2.1
+openpyxl==3.1.5
+pyarrow==18.1.0
+
+# Statistics
+scipy==1.15.0
+statsmodels==0.14.4
+pingouin==0.5.5
+factor-analyzer==0.5.1
+
+# Export
+reportlab==4.2.5
+python-docx==1.1.2
+jinja2==3.1.5
+
+# Storage / Supabase
+supabase==2.11.0
+python-dotenv==1.0.1
+
+# Validation
+pydantic==2.10.4
+pydantic-settings==2.7.1

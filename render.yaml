@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: kaless-engine
+    env: docker
+    region: frankfurt
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+    healthCheckPath: /api/health
