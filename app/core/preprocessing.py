@@ -19,10 +19,21 @@ def validate_variable_exists(df: pd.DataFrame, var_name: str) -> None:
 
 
 def validate_numeric(series: pd.Series, var_name: str) -> None:
-    """Ensure a variable is numeric (or coercible)."""
-    if not pd.api.types.is_numeric_dtype(series):
+    """Ensure a variable is numeric (or coercible).
+    If string-encoded numbers exist, they will be coerced in the sanitization pipeline.
+    Only rejects if <20% of non-null values are numeric after coercion attempt.
+    """
+    if pd.api.types.is_numeric_dtype(series):
+        return
+    # Attempt coercion to check feasibility
+    coerced = pd.to_numeric(series, errors="coerce")
+    non_null = series.dropna()
+    if len(non_null) == 0:
+        raise ValidationError(f"Variable '{var_name}' is entirely empty.")
+    numeric_ratio = coerced.notna().sum() / max(len(non_null), 1)
+    if numeric_ratio < 0.2:
         raise ValidationError(
-            f"Variable '{var_name}' must be numeric for this analysis."
+            f"Variable '{var_name}' is not numeric. Only {numeric_ratio:.0%} of values could be converted to numbers."
         )
 
 

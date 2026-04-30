@@ -16,8 +16,14 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
-    # CORS
-    allowed_origins: str = "http://localhost:3000"
+    # CORS — comma-separated list of allowed origins
+    allowed_origins: str = (
+        "http://localhost:3000,"
+        "http://localhost:3001,"
+        "https://kaless-web.vercel.app,"
+        "https://kaless-web-turanabdulkadirs-projects.vercel.app,"
+        "https://kaless-1os388mys-turanabdulkadirs-projects.vercel.app"
+    )
 
     # App
     env: str = "development"
@@ -30,7 +36,10 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins(self) -> list[str]:
-        return [o.strip() for o in self.allowed_origins.split(",")]
+        origins = [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
+        # Always ensure Vercel preview URLs are allowed
+        origins.append("https://kaless-web.vercel.app")
+        return list(set(origins))  # deduplicate
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

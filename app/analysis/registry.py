@@ -17,11 +17,13 @@ from app.utils.errors import ValidationError
 
 # Import all completed analysis modules
 from app.analysis.descriptives import run_descriptives, run_frequencies
-from app.analysis.ttest import run_one_sample_ttest, run_independent_ttest, run_paired_ttest
+from app.analysis.ttest import calculate_independent_t, calculate_paired_t, run_one_sample_t_test
 from app.analysis.anova import run_one_way_anova
 from app.analysis.chi_square import run_chi_square_independence
-from app.analysis.correlation import run_pearson_correlation, run_spearman_correlation, run_correlation_matrix
+from app.analysis.correlation import calculate_correlation
 from app.analysis.regression import run_linear_regression
+from app.analysis.reliability import run_reliability
+from app.analysis.chart import run_chart_builder
 
 
 # Analysis function type
@@ -57,7 +59,7 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
     "one_sample_t_test": {
         "display_name": "One-Sample t-Test",
         "category": "T-Tests",
-        "func": run_one_sample_ttest,
+        "func": run_one_sample_t_test,
         "required": ["variable"],
         "required_pattern": "1 numeric variable",
         "optional": {"test_value": 0.0, "alpha": 0.05},
@@ -68,7 +70,7 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
     "independent_t_test": {
         "display_name": "Independent Samples t-Test",
         "category": "T-Tests",
-        "func": run_independent_ttest,
+        "func": calculate_independent_t,
         "required": ["dependent", "grouping"],
         "required_pattern": "1 numeric dependent, 1 grouping (2 levels) variable",
         "optional": {"alpha": 0.05},
@@ -79,7 +81,7 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
     "paired_t_test": {
         "display_name": "Paired Samples t-Test",
         "category": "T-Tests",
-        "func": run_paired_ttest,
+        "func": calculate_paired_t,
         "required": ["variable1", "variable2"],
         "required_pattern": "2 numeric variables (related)",
         "optional": {"alpha": 0.05},
@@ -129,7 +131,7 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
     "pearson_correlation": {
         "display_name": "Pearson Correlation",
         "category": "Correlation",
-        "func": run_pearson_correlation,
+        "func": calculate_correlation,
         "required": ["variable1", "variable2"],
         "required_pattern": "2 numeric variables",
         "optional": {"alpha": 0.05},
@@ -140,7 +142,7 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
     "spearman_correlation": {
         "display_name": "Spearman Correlation",
         "category": "Correlation",
-        "func": run_spearman_correlation,
+        "func": calculate_correlation,
         "required": ["variable1", "variable2"],
         "required_pattern": "2 numeric or ordinal variables",
         "optional": {"alpha": 0.05},
@@ -148,10 +150,21 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
         "min_plan": "free",
         "implemented": True,
     },
+    "reliability": {
+        "display_name": "Reliability Analysis",
+        "category": "Scale",
+        "func": run_reliability,
+        "required": ["variables"],
+        "required_pattern": "2+ numeric variables",
+        "optional": {"model": "alpha"},
+        "description": "Internal consistency analysis (Cronbach's Alpha).",
+        "min_plan": "premium",
+        "implemented": True,
+    },
     "correlation_matrix": {
         "display_name": "Correlation Matrix",
         "category": "Correlation",
-        "func": run_correlation_matrix,
+        "func": None,
         "required": ["variables"],
         "required_pattern": "2+ numeric variables",
         "optional": {"method": "pearson", "alpha": 0.05},
@@ -184,6 +197,19 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
         "implemented": False,
     },
 
+    # --- GRAPHS ---
+    "chart_builder": {
+        "display_name": "Chart Builder",
+        "category": "Graphs",
+        "func": run_chart_builder,
+        "required": ["chart_type", "x_axis"],
+        "required_pattern": "Any variables suitable for chosen chart",
+        "optional": {"y_axis": None},
+        "description": "Generates aggregated data for rendering classic SPSS charts.",
+        "min_plan": "free",
+        "implemented": True,
+    },
+    
     # --- ADVANCED ---
     "reliability_analysis": {
         "display_name": "Reliability Analysis (Cronbach's Alpha)",

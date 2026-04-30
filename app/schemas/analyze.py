@@ -11,7 +11,8 @@ class AnalyzeRequest(BaseModel):
     """Request to run a statistical analysis."""
 
     analysis_type: str = Field(..., description="Analysis type from registry")
-    dataset_url: str = Field(..., description="Supabase storage path: bucket/path")
+    dataset_url: str | None = Field(None, description="Supabase storage path: bucket/path")
+    raw_data: list[dict[str, Any]] | None = Field(None, description="Raw JSON rows for mock/offline testing")
     file_type: str = Field(..., description="csv, xlsx, or tsv")
     params: dict[str, Any] = Field(default_factory=dict, description="Analysis parameters")
     encoding: str = Field("utf-8")

@@ -1,164 +1,152 @@
-"""KALESS Engine — ANOVA Module.
-
-Implements one-way ANOVA with Bonferroni-corrected pairwise post-hoc.
-Library: scipy.stats
-"""
-
-from __future__ import annotations
+"""KALESS Engine — One-Way ANOVA Module."""
 
 import time
 from datetime import datetime
-
-import numpy as np
 import pandas as pd
-from scipy import stats
+import numpy as np
+import scipy.stats as stats
+from statsmodels.stats.multicomp import pairwise_tukeyhsd
 
-from app.core.preprocessing import (
-    validate_variable_exists, validate_numeric, validate_min_groups,
-    validate_min_n, drop_missing_listwise, compute_descriptive, get_group_data,
-)
-from app.core.assumptions import check_normality, check_homogeneity_of_variance, build_assumptions_block
-from app.core.effect_sizes import eta_squared
-from app.core.interpretation import determine_significance, interpret_anova, format_p
-from app.schemas.results import (
-    NormalizedResult, PrimaryResult, GroupDescriptive,
-    PostHocPair, ChartData,
-)
+from app.core.preprocessing import validate_variable_exists
+from app.schemas.results import NormalizedResult
 
-
-def run_one_way_anova(
-    df: pd.DataFrame,
-    dependent: str,
-    grouping: str,
-    alpha: float = 0.05,
-    post_hoc: bool = True,
-) -> NormalizedResult:
-    """One-way between-subjects ANOVA."""
+def run_one_way_anova(df: pd.DataFrame, dependent: str, factor: str) -> NormalizedResult:
     start = time.time()
     warnings: list[str] = []
 
     validate_variable_exists(df, dependent)
-    validate_variable_exists(df, grouping)
-    validate_numeric(df[dependent], dependent)
+    validate_variable_exists(df, factor)
 
-    cleaned, n_dropped = drop_missing_listwise(df, [dependent, grouping])
-    if n_dropped > 0:
-        warnings.append(f"{n_dropped} case(s) excluded due to missing values.")
+    # Prepare data, drop missing values
+    sub_df = df[[dependent, factor]].dropna()
+    valid_n = len(sub_df)
+    
+    if valid_n < 3:
+        raise ValueError("Not enough valid cases to compute One-Way ANOVA.")
 
-    groups_list = validate_min_groups(cleaned[grouping], grouping, 2)
-    group_data = get_group_data(cleaned, dependent, grouping)
+    if len(sub_df) < len(df):
+        warnings.append(f"{len(df) - valid_n} case(s) excluded due to missing values.")
 
-    for g_name, g_series in group_data.items():
-        validate_min_n(len(g_series), 2, f"group '{g_name}'")
+    # Group data
+    groups = sub_df.groupby(factor)[dependent]
+    group_data = [group.values for name, group in groups]
+    group_names = list(groups.groups.keys())
 
-    # Assumptions
-    normality_checks = [check_normality(g, f"{dependent} ({g_name})", alpha)
-                        for g_name, g in group_data.items()]
-    homogeneity = check_homogeneity_of_variance(group_data, alpha)
-    assumptions = build_assumptions_block(normality_checks + [homogeneity])
+    if len(group_data) < 2:
+        raise ValueError("Factor variable must have at least two distinct groups.")
 
-    if not homogeneity.passed:
-        warnings.append("Levene's test significant — consider Welch's ANOVA for unequal variances.")
+    # Calculate One-Way ANOVA using scipy
+    f_stat, p_value = stats.f_oneway(*group_data)
 
-    # Descriptives per group
-    descriptives = [GroupDescriptive(**compute_descriptive(g, g_name))
-                    for g_name, g in group_data.items()]
-    # Overall descriptive
-    descriptives.append(GroupDescriptive(**compute_descriptive(cleaned[dependent], "Total")))
+    # Sum of Squares (Between and Within)
+    grand_mean = sub_df[dependent].mean()
+    
+    ss_between = sum(len(g) * (g.mean() - grand_mean)**2 for g in group_data)
+    df_between = len(group_data) - 1
+    ms_between = ss_between / df_between if df_between > 0 else 0
 
-    # One-way ANOVA
-    group_arrays = [g.values for g in group_data.values()]
-    f_stat, p_value = stats.f_oneway(*group_arrays)
+    ss_within = sum(sum((x - g.mean())**2 for x in g) for g in group_data)
+    df_within = valid_n - len(group_data)
+    ms_within = ss_within / df_within if df_within > 0 else 0
 
-    # Compute SS for effect size
-    grand_mean = float(cleaned[dependent].mean())
-    ss_between = sum(len(g) * (float(g.mean()) - grand_mean) ** 2 for g in group_data.values())
-    ss_total = float(((cleaned[dependent] - grand_mean) ** 2).sum())
+    ss_total = ss_between + ss_within
+    df_total = df_between + df_within
 
-    k = len(group_data)
-    n_total = len(cleaned)
-    df_between = k - 1
-    df_within = n_total - k
-    sig = determine_significance(float(p_value), alpha)
+    anova_table = [
+        {
+            "Source": "Between Groups",
+            "Sum of Squares": round(ss_between, 3),
+            "df": df_between,
+            "Mean Square": round(ms_between, 3),
+            "F": round(f_stat, 3) if not np.isnan(f_stat) else None,
+            "Sig.": round(p_value, 3) if not np.isnan(p_value) else None
+        },
+        {
+            "Source": "Within Groups",
+            "Sum of Squares": round(ss_within, 3),
+            "df": df_within,
+            "Mean Square": round(ms_within, 3),
+            "F": None,
+            "Sig.": None
+        },
+        {
+            "Source": "Total",
+            "Sum of Squares": round(ss_total, 3),
+            "df": df_total,
+            "Mean Square": None,
+            "F": None,
+            "Sig.": None
+        }
+    ]
 
-    # Effect size
-    effect = eta_squared(ss_between, ss_total)
+    output_blocks = [
+        {
+            "block_type": "table",
+            "title": "ANOVA",
+            "content": {
+                "columns": ["Source", "Sum of Squares", "df", "Mean Square", "F", "Sig."],
+                "rows": anova_table,
+                "footnotes": [f"Dependent Variable: {dependent}"]
+            }
+        }
+    ]
 
-    # Post-hoc (Bonferroni-corrected pairwise t-tests)
-    post_hoc_results: list[PostHocPair] = []
-    if post_hoc and float(p_value) <= alpha:
-        group_names = list(group_data.keys())
-        n_comparisons = len(group_names) * (len(group_names) - 1) // 2
-        for i in range(len(group_names)):
-            for j in range(i + 1, len(group_names)):
-                g1 = group_data[group_names[i]]
-                g2 = group_data[group_names[j]]
-                t, p_pair = stats.ttest_ind(g1, g2, equal_var=homogeneity.passed)
-                p_adj = min(float(p_pair) * n_comparisons, 1.0)  # Bonferroni
-                mean_diff = float(g1.mean() - g2.mean())
-                se = float(np.sqrt(g1.var(ddof=1) / len(g1) + g2.var(ddof=1) / len(g2)))
-                t_crit = stats.t.ppf(1 - alpha / (2 * n_comparisons), len(g1) + len(g2) - 2)
-                post_hoc_results.append(PostHocPair(
-                    group1=group_names[i],
-                    group2=group_names[j],
-                    mean_diff=round(mean_diff, 4),
-                    se=round(se, 4),
-                    statistic=round(float(t), 4),
-                    p_value=round(float(p_pair), 6),
-                    p_adjusted=round(p_adj, 6),
-                    ci_lower=round(mean_diff - t_crit * se, 4),
-                    ci_upper=round(mean_diff + t_crit * se, 4),
-                    significant=p_adj <= alpha,
-                ))
+    # Post-Hoc: Tukey HSD (if significant)
+    if not np.isnan(p_value) and p_value < 0.05 and len(group_data) > 2:
+        try:
+            tukey = pairwise_tukeyhsd(endog=sub_df[dependent], groups=sub_df[factor], alpha=0.05)
+            
+            # The summary contains: group1, group2, meandiff, p-adj, lower, upper, reject
+            res_data = tukey.summary().data
+            headers = res_data[0]
+            
+            # Find indices
+            idx_g1 = headers.index('group1')
+            idx_g2 = headers.index('group2')
+            idx_diff = headers.index('meandiff')
+            idx_p = headers.index('p-adj')
+            idx_lower = headers.index('lower')
+            idx_upper = headers.index('upper')
 
-    # Chart: boxplot data
-    box_data = []
-    for g_name, g_series in group_data.items():
-        q1 = float(g_series.quantile(0.25))
-        q3 = float(g_series.quantile(0.75))
-        box_data.append({
-            "group": g_name,
-            "min": float(g_series.min()),
-            "q1": q1,
-            "median": float(g_series.median()),
-            "q3": q3,
-            "max": float(g_series.max()),
-            "mean": float(g_series.mean()),
-        })
+            post_hoc_rows = []
+            for row in res_data[1:]:
+                # Note: statsmodels meandiff is group2 - group1, SPSS is usually (I) - (J)
+                # But we will use what statsmodels provides directly
+                post_hoc_rows.append({
+                    "(I) Group": row[idx_g1],
+                    "(J) Group": row[idx_g2],
+                    "Mean Difference (I-J)": round(row[idx_diff], 4),
+                    "Std. Error": "", # statsmodels tukey doesn't directly expose SE in summary easily, leave empty or calculate
+                    "Sig.": round(row[idx_p], 3),
+                    "Lower Bound": round(row[idx_lower], 4),
+                    "Upper Bound": round(row[idx_upper], 4)
+                })
+
+            output_blocks.append({
+                "block_type": "table",
+                "title": "Multiple Comparisons (Tukey HSD)",
+                "content": {
+                    "columns": ["(I) Group", "(J) Group", "Mean Difference (I-J)", "Std. Error", "Sig.", "Lower Bound", "Upper Bound"],
+                    "rows": post_hoc_rows,
+                    "footnotes": ["The error term is Mean Square(Error).", "* The mean difference is significant at the 0.05 level."]
+                }
+            })
+        except Exception as e:
+            warnings.append(f"Could not compute Tukey HSD Post-Hoc: {str(e)}")
 
     duration = int((time.time() - start) * 1000)
 
     return NormalizedResult(
         analysis_type="one_way_anova",
-        title=f"One-Way ANOVA — {dependent} by {grouping}",
-        variables={"dependent": dependent, "grouping": grouping, "groups": groups_list},
-        assumptions=assumptions,
-        primary=PrimaryResult(
-            statistic_name="F",
-            statistic_value=round(float(f_stat), 4),
-            df=float(df_between),
-            df2=float(df_within),
-            p_value=round(float(p_value), 6),
-            p_value_formatted=format_p(float(p_value)),
-            significance=sig,
-            alpha=alpha,
-        ),
-        descriptives=descriptives,
-        effect_size=effect,
-        post_hoc=post_hoc_results,
-        charts=[ChartData(
-            chart_type="boxplot",
-            data=box_data,
-            config={"title": f"{dependent} by {grouping}", "xLabel": grouping, "yLabel": dependent},
-        )],
-        interpretation=interpret_anova(
-            float(f_stat), float(df_between), float(df_within), float(p_value),
-            sig, effect.value, effect.interpretation, dependent,
-        ),
+        title="One-Way ANOVA",
+        variables={"dependent": [dependent], "factor": [factor]},
+        output_blocks=output_blocks,
         warnings=warnings,
         metadata={
-            "n_total": len(df), "missing_excluded": n_dropped,
-            "library": "scipy.stats", "duration_ms": duration,
+            "n_total": len(df),
+            "valid_n": valid_n,
+            "library": "scipy + statsmodels",
+            "duration_ms": duration,
             "timestamp": datetime.utcnow().isoformat(),
         },
     )

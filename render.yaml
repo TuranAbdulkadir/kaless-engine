@@ -5,9 +5,17 @@ services:
     region: frankfurt
     plan: starter
     autoDeploy: true
+    healthCheckPath: /engine/health
     envVars:
       - key: SUPABASE_URL
         sync: false
-      - key: SUPABASE_KEY
+      - key: SUPABASE_SERVICE_KEY
         sync: false
-    healthCheckPath: /api/health
+      - key: ENGINE_API_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: "https://kaless-web.vercel.app,https://kaless-web-turanabdulkadirs-projects.vercel.app"
+      - key: ENV
+        value: "production"
+      - key: MAX_UPLOAD_SIZE_MB
+        value: "200"
