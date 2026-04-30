@@ -20,7 +20,7 @@ from app.core.preprocessing import (
 )
 from app.schemas.results import (
     NormalizedResult, GroupDescriptive, ChartData,
-    Interpretation,
+    Interpretation, OutputBlock, OutputBlockType
 )
 
 
@@ -73,12 +73,33 @@ def run_descriptives(
         if d.mean is not None and d.sd is not None:
             summary_parts.append(f"{d.name}: M = {d.mean:.3f}, SD = {d.sd:.3f}, N = {d.n}")
 
+    output_blocks = [
+        OutputBlock(
+            block_type=OutputBlockType.TABLE,
+            title="Descriptive Statistics",
+            content={
+                "columns": ["Variable", "N", "Mean", "Std. Deviation", "Minimum", "Maximum"],
+                "rows": [
+                    {
+                        "Variable": d.name,
+                        "N": d.n,
+                        "Mean": f"{d.mean:.3f}" if d.mean is not None else "",
+                        "Std. Deviation": f"{d.sd:.3f}" if d.sd is not None else "",
+                        "Minimum": f"{d.min:.3f}" if d.min is not None else "",
+                        "Maximum": f"{d.max:.3f}" if d.max is not None else ""
+                    } for d in descriptives
+                ]
+            }
+        )
+    ]
+
     return NormalizedResult(
         analysis_type="descriptives",
         title="Descriptive Statistics",
         variables={"analyzed": variables},
         descriptives=descriptives,
         charts=charts,
+        output_blocks=output_blocks,
         warnings=warnings,
         interpretation=Interpretation(
             summary="; ".join(summary_parts) if summary_parts else "Descriptive statistics computed.",
@@ -129,6 +150,24 @@ def run_frequencies(
 
     duration = int((time.time() - start) * 1000)
 
+    output_blocks = [
+        OutputBlock(
+            block_type=OutputBlockType.TABLE,
+            title=f"Frequencies: {variable}",
+            content={
+                "columns": ["Value", "Frequency", "Percent", "Cumulative Percent"],
+                "rows": [
+                    {
+                        "Value": f["value"],
+                        "Frequency": f["frequency"],
+                        "Percent": f["percent"],
+                        "Cumulative Percent": f["cumulative_percent"]
+                    } for f in freq_table
+                ]
+            }
+        )
+    ]
+
     return NormalizedResult(
         analysis_type="frequencies",
         title=f"Frequency Table — {variable}",
@@ -140,6 +179,7 @@ def run_frequencies(
             data=chart_data,
             config={"title": f"Frequencies of {variable}", "xLabel": variable, "yLabel": "Count"},
         )],
+        output_blocks=output_blocks,
         warnings=warnings,
         metadata={
             "n_total": len(df),

@@ -7,8 +7,8 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     # Supabase
-    supabase_url: str = ""
-    supabase_service_key: str = ""
+    supabase_url: str = "https://kczykrrhtdsjtbqiemvph.supabase.co"
+    supabase_service_key: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtjenlrcmh0ZHNqdGJxaWVtdnBoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MzMwNzc4MSwiZXhwIjoyMDg4ODgzNzgxfQ.nOkuYcIQu6SAxDoonqa_ZdoOGuO-seoqX_4blcjO3ow"
 
     # Engine Auth
     engine_api_key: str = ""
