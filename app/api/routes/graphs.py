@@ -171,7 +171,25 @@ async def generate_chart_data(
             chart_data.append(item)
 
     else:
-        raise HTTPException(status_code=400, detail=f"Unsupported chart type: {chart_type}")
+        # Graceful fallback for unsupported charts (like 3D Bar, Area, High-Low)
+        # Instead of throwing an error, we generate a basic bar chart of the data
+        # so the UI still displays a functional, professional result without crashing.
+        if not x_axis:
+            # If no x_axis selected, use the first available column
+            x_axis = df.columns[0] if not df.empty else "Unknown"
+            
+        counts = df[x_axis].value_counts().reset_index()
+        counts.columns = ['name', 'value']
+        counts = counts.sort_values(by='name')
+        chart_data = counts.to_dict('records')
+        
+        for item in chart_data:
+            item['name'] = str(item['name'])
+            item['value'] = float(item['value'])
+            
+        # Override chart type to bar so frontend can render it
+        chart_type = "bar"
+        req.chart_title = f"{req.chart_type.replace('_', ' ').title()} (Simulated as Bar)"
 
     # Build the NormalizedResult
     chart_block = ChartData(

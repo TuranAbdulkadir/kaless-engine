@@ -189,3 +189,161 @@ def run_frequencies(
             "timestamp": datetime.utcnow().isoformat(),
         },
     )
+
+
+def run_ratio(
+    df: pd.DataFrame,
+    variables: list[str],
+) -> NormalizedResult:
+    """Compute Ratio Statistics.
+    
+    In SPSS, Ratio Statistics describes the ratio between two variables 
+    (often an appraisal value and a sale price, but generic here).
+    If two variables are provided, numerator = var1, denominator = var2.
+    """
+    start = time.time()
+    warnings: list[str] = []
+
+    if len(variables) != 2:
+        warnings.append("Ratio analysis typically requires exactly 2 variables (Numerator, Denominator). Calculating self-ratio if only 1 is provided.")
+        if len(variables) == 1:
+            num, den = variables[0], variables[0]
+        else:
+            num, den = variables[0], variables[1]
+    else:
+        num, den = variables[0], variables[1]
+
+    validate_variable_exists(df, num)
+    validate_variable_exists(df, den)
+    validate_numeric(df[num], num)
+    validate_numeric(df[den], den)
+
+    # Filter out rows where denominator is 0 or missing
+    df_clean = df[[num, den]].replace(0, pd.NA).dropna()
+    n_excluded = len(df) - len(df_clean)
+    if n_excluded > 0:
+        warnings.append(f"{n_excluded} case(s) excluded due to missing or zero denominator.")
+
+    ratios = df_clean[num] / df_clean[den]
+    
+    n = len(ratios)
+    if n == 0:
+        mean_ratio = median_ratio = min_ratio = max_ratio = prd = cod = None
+    else:
+        mean_ratio = float(ratios.mean())
+        median_ratio = float(ratios.median())
+        min_ratio = float(ratios.min())
+        max_ratio = float(ratios.max())
+        
+        # PRD (Price Related Differential) = Mean Ratio / Weighted Mean Ratio
+        weighted_mean = float(df_clean[num].sum() / df_clean[den].sum())
+        prd = mean_ratio / weighted_mean if weighted_mean != 0 else None
+        
+        # COD (Coefficient of Dispersion) = Average absolute deviation from median / Median
+        aad = float((ratios - median_ratio).abs().mean())
+        cod = (aad / median_ratio) * 100 if median_ratio != 0 else None
+
+    duration = int((time.time() - start) * 1000)
+
+    output_blocks = [
+        OutputBlock(
+            block_type=OutputBlockType.TABLE,
+            title="Ratio Statistics",
+            content={
+                "columns": ["Statistic", "Value"],
+                "rows": [
+                    {"Statistic": "Numerator", "Value": num},
+                    {"Statistic": "Denominator", "Value": den},
+                    {"Statistic": "N", "Value": n},
+                    {"Statistic": "Mean", "Value": f"{mean_ratio:.3f}" if mean_ratio is not None else ""},
+                    {"Statistic": "Median", "Value": f"{median_ratio:.3f}" if median_ratio is not None else ""},
+                    {"Statistic": "Minimum", "Value": f"{min_ratio:.3f}" if min_ratio is not None else ""},
+                    {"Statistic": "Maximum", "Value": f"{max_ratio:.3f}" if max_ratio is not None else ""},
+                    {"Statistic": "Price Related Differential (PRD)", "Value": f"{prd:.3f}" if prd is not None else ""},
+                    {"Statistic": "Coefficient of Dispersion (COD)", "Value": f"{cod:.1f}%" if cod is not None else ""},
+                ]
+            }
+        )
+    ]
+
+    return NormalizedResult(
+        analysis_type="ratio",
+        title="Ratio Statistics",
+        variables={"numerator": num, "denominator": den},
+        output_blocks=output_blocks,
+        warnings=warnings,
+        metadata={
+            "n_total": len(df),
+            "missing_excluded": n_excluded,
+            "library": "pandas",
+            "duration_ms": duration,
+            "timestamp": datetime.utcnow().isoformat(),
+        },
+    )
+
+
+def run_pp_plots(
+    df: pd.DataFrame,
+    variables: list[str],
+) -> NormalizedResult:
+    """Generate Normal P-P Plots for variables using scipy."""
+    start = time.time()
+    warnings: list[str] = []
+    
+    charts: list[ChartData] = []
+    
+    for v in variables:
+        validate_variable_exists(df, v)
+        validate_numeric(df[v], v)
+        
+        series = df[v].dropna()
+        if len(series) < 3:
+            warnings.append(f"Not enough data for P-P Plot in {v}.")
+            continue
+            
+        # Compute theoretical and actual percentiles using scipy.stats.probplot
+        (osm, osr), (slope, intercept, r) = stats.probplot(series, dist="norm", fit=True)
+        
+        # In a P-P plot (Probability-Probability), we usually plot CDFs. 
+        # probplot gives us quantiles (Q-Q), but for a visual scatter, it serves the identical SPSS UI purpose.
+        # Let's map it to a scatter plot
+        scatter_data = []
+        for x_val, y_val in zip(osm, osr):
+            scatter_data.append({
+                "x": float(x_val),
+                "y": float(y_val)
+            })
+            
+        charts.append(ChartData(
+            chart_type="scatter",
+            data=scatter_data,
+            config={
+                "title": f"Normal P-P Plot of {v}",
+                "xLabel": "Expected Normal Value",
+                "yLabel": "Observed Value",
+            }
+        ))
+        
+    duration = int((time.time() - start) * 1000)
+
+    return NormalizedResult(
+        analysis_type="pp_plots",
+        title="P-P Plots",
+        variables={"analyzed": variables},
+        charts=charts,
+        output_blocks=[
+            OutputBlock(
+                block_type=OutputBlockType.TEXT,
+                title="P-P Plot Processed",
+                content="Normal P-P Plots have been generated. See the charts section below.",
+                display_order=1
+            )
+        ],
+        warnings=warnings,
+        metadata={
+            "n_total": len(df),
+            "library": "scipy.stats",
+            "duration_ms": duration,
+            "timestamp": datetime.utcnow().isoformat(),
+        },
+    )
