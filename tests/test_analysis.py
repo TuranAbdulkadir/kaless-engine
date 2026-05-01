@@ -9,7 +9,7 @@ import numpy as np
 from app.analysis.ttest import calculate_independent_t, run_one_sample_t_test
 from app.analysis.anova import run_one_way_anova
 from app.analysis.regression import run_linear_regression
-from app.analysis.reliability import run_reliability_analysis
+from app.analysis.reliability import run_reliability
 
 @pytest.fixture
 def sample_data():
@@ -63,16 +63,16 @@ def test_linear_regression(sample_data):
     summary_block = next(b for b in result.output_blocks if b.title == "Model Summary")
     
     # R Square should be high
-    r_square = summary_block.content["rows"][0]["R Square"]
+    r_square = float(summary_block.content["rows"][0]["R Square"])
     assert r_square > 0.8
 
 def test_reliability_analysis(sample_data):
-    result = run_reliability_analysis(sample_data, ["q1", "q2"])
+    result = run_reliability(sample_data, ["q1", "q2"])
     
     assert result.analysis_type == "reliability"
     stats_block = next(b for b in result.output_blocks if b.title == "Reliability Statistics")
     
-    alpha = stats_block.content["rows"][0]["Cronbach's Alpha"]
+    alpha = float(stats_block.content["rows"][0]["Cronbach's Alpha"])
     assert alpha == 1.0
 
 def test_validation_errors(sample_data):

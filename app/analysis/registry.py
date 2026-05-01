@@ -31,10 +31,10 @@ from app.analysis.missing_value import run_missing_value_analysis
 from app.analysis.neural_net import run_neural_network
 from app.analysis.survival import run_survival_analysis
 from app.analysis.forecasting import run_forecasting
-from app.analysis.mixed_models import run_mixed_models
+from app.analysis.mixed_models import run_mixed_model
 from app.analysis.multiple_response import run_multiple_response
 from app.analysis.direct_marketing import run_direct_marketing
-from app.analysis.nonparametric import run_mann_whitney, run_wilcoxon, run_kruskal_wallis, run_friedman
+from app.analysis.nonparametric import run_nonparametric
 
 
 # Analysis function type
@@ -313,7 +313,7 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
     "mixed_models": {
         "display_name": "Mixed Models",
         "category": "Advanced",
-        "func": run_mixed_models,
+        "func": run_mixed_model,
         "required": ["dependent", "fixed_factors"],
         "required_pattern": "1 dependent, 1+ fixed factors",
         "optional": {},
@@ -346,7 +346,7 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
     "nonparametric_mann_whitney": {
         "display_name": "Mann-Whitney U Test",
         "category": "Nonparametric",
-        "func": run_mann_whitney,
+        "func": run_nonparametric,
         "required": ["dependent", "grouping"],
         "required_pattern": "1 numeric dependent, 1 binary grouping",
         "optional": {"alpha": 0.05},
@@ -357,7 +357,7 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
     "nonparametric_wilcoxon": {
         "display_name": "Wilcoxon Signed Ranks Test",
         "category": "Nonparametric",
-        "func": run_wilcoxon,
+        "func": run_nonparametric,
         "required": ["variable1", "variable2"],
         "required_pattern": "2 related numeric variables",
         "optional": {"alpha": 0.05},
@@ -368,7 +368,7 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
     "kruskal_wallis": {
         "display_name": "Kruskal-Wallis Test",
         "category": "Nonparametric",
-        "func": run_kruskal_wallis,
+        "func": run_nonparametric,
         "required": ["dependent", "grouping"],
         "required_pattern": "1 numeric dependent, 1 grouping (3+ levels)",
         "optional": {"alpha": 0.05},
@@ -379,7 +379,7 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
     "friedman": {
         "display_name": "Friedman Test",
         "category": "Nonparametric",
-        "func": run_friedman,
+        "func": run_nonparametric,
         "required": ["variables"],
         "required_pattern": "3+ related numeric variables",
         "optional": {"alpha": 0.05},
