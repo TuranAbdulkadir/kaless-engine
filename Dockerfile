@@ -11,6 +11,7 @@ ENV PYTHONUNBUFFERED=1
 # Install system dependencies (needed for compiling some scientific libraries)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory
@@ -29,8 +30,5 @@ RUN chown -R appuser:appuser /app
 # Switch to the non-root user
 USER appuser
 
-# Expose the API port
-EXPOSE 8000
-
-# Command to run the application using Uvicorn
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Command to run the application using Uvicorn (respects Render PORT)
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
