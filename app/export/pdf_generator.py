@@ -125,11 +125,22 @@ def generate_pdf(result: dict) -> bytes:
     
     styles = getSampleStyleSheet()
     
-    # --- Custom APA Styles ---
+    # --- Custom APA Styles based on Metadata ---
+    meta = result.get("metadata", {})
+    font_fam = meta.get("font_family", "serif")
+    spacing = meta.get("line_spacing", "double")
+    
+    font_name = "Times-Roman" if font_fam == "serif" else "Helvetica"
+    font_bold = "Times-Bold" if font_fam == "serif" else "Helvetica-Bold"
+    font_italic = "Times-Italic" if font_fam == "serif" else "Helvetica-Oblique"
+    
+    # Line spacing: single (12pt leading for 12pt font) or double (24pt leading)
+    leading_val = 24 if spacing == "double" else 14
+
     title_style = ParagraphStyle(
         "ReportTitle",
         parent=styles["Normal"],
-        fontName="Times-Bold",
+        fontName=font_bold,
         fontSize=14,
         spaceAfter=30,
         alignment=1, # Center
@@ -138,7 +149,7 @@ def generate_pdf(result: dict) -> bytes:
     
     label_style = ParagraphStyle(
         "TableLabel",
-        fontName="Times-Bold",
+        fontName=font_bold,
         fontSize=12,
         leading=14,
         spaceBefore=12,
@@ -147,7 +158,7 @@ def generate_pdf(result: dict) -> bytes:
     
     table_title_style = ParagraphStyle(
         "TableTitle",
-        fontName="Times-Italic",
+        fontName=font_italic,
         fontSize=12,
         leading=14,
         spaceAfter=10
@@ -156,17 +167,17 @@ def generate_pdf(result: dict) -> bytes:
     body_style = ParagraphStyle(
         "BodyText",
         parent=styles["Normal"],
-        fontName="Times-Roman",
+        fontName=font_name,
         fontSize=12,
-        leading=24, # Double spaced
+        leading=leading_val, 
         spaceAfter=12,
-        firstLineIndent=36 # Half inch
+        firstLineIndent=36 if spacing == "double" else 0
     )
     
     h1_style = ParagraphStyle(
         "Heading1",
         parent=styles["Heading1"],
-        fontName="Times-Bold",
+        fontName=font_bold,
         fontSize=12,
         alignment=1,
         spaceBefore=24,
@@ -175,7 +186,7 @@ def generate_pdf(result: dict) -> bytes:
     
     footer_style = ParagraphStyle(
         "Footer",
-        fontName="Times-Roman",
+        fontName=font_name,
         fontSize=8,
         textColor=colors.gray,
         alignment=2 # Right

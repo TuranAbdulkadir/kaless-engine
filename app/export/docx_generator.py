@@ -45,11 +45,15 @@ def generate_docx(result: dict) -> bytes:
     doc = Document()
     
     # 1. Global Document Styling (APA 7: Times New Roman 12pt, Double Spaced)
+    meta = result.get("metadata", {})
+    font_fam = meta.get("font_family", "serif")
+    spacing = meta.get("line_spacing", "double")
+    
     style = doc.styles['Normal']
     font = style.font
-    font.name = 'Times New Roman'
+    font.name = 'Times New Roman' if font_fam == "serif" else "Arial"
     font.size = Pt(12)
-    style.paragraph_format.line_spacing = 2.0  # APA standard double spacing
+    style.paragraph_format.line_spacing = 2.0 if spacing == "double" else 1.15
     style.paragraph_format.space_after = Pt(0)
     
     # 2. Cover Section (Centered Title)
@@ -58,6 +62,8 @@ def generate_docx(result: dict) -> bytes:
     title_run = title_p.add_run(result.get('title', 'Statistical Analysis Report').upper())
     title_run.bold = True
     title_run.font.size = Pt(14)
+    if font_fam == "sans-serif":
+        title_run.font.name = "Arial"
     
     doc.add_paragraph() # Spacer
     
