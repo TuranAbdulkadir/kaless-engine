@@ -16,7 +16,7 @@ from app.schemas.results import NormalizedResult
 from app.utils.errors import ValidationError
 
 # Import all completed analysis modules
-from app.analysis.descriptives import run_descriptives, run_frequencies, run_ratio, run_pp_plots, run_explore
+from app.analysis.descriptives import run_descriptives, run_frequencies, run_ratio, run_pp_plots, run_explore, run_qq_plots, run_crosstabs
 from app.analysis.ttest import calculate_independent_t, calculate_paired_t, run_one_sample_t_test
 from app.analysis.anova import run_one_way_anova
 from app.analysis.chi_square import run_chi_square_independence
@@ -75,6 +75,28 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
         "optional": {"alpha": 0.05},
         "description": "Detailed descriptive statistics by group levels.",
         "min_plan": "free",
+        "implemented": True,
+    },
+    "crosstabs": {
+        "display_name": "Crosstabs",
+        "category": "Descriptives",
+        "func": run_crosstabs,
+        "required": ["rows", "columns"],
+        "required_pattern": "2 categorical variables",
+        "optional": {},
+        "description": "Contingency tables and chi-square analysis.",
+        "min_plan": "free",
+        "implemented": True,
+    },
+    "qq_plots": {
+        "display_name": "Q-Q Plots",
+        "category": "Descriptives",
+        "func": run_qq_plots,
+        "required": ["variables"],
+        "required_pattern": "1+ numeric variables",
+        "optional": {},
+        "description": "Quantile-Quantile plots for normality assessment.",
+        "min_plan": "premium",
         "implemented": True,
     },
     "ratio": {

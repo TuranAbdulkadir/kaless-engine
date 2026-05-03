@@ -40,6 +40,12 @@ def generate_interpretation(result: NormalizedResult) -> Interpretation:
         return _interpret_kmeans(result)
     elif analysis_type == "neural_network":
         return _interpret_neural_net(result)
+    elif analysis_type == "ratio":
+        return _interpret_ratio(result)
+    elif analysis_type == "pp_plots":
+        return _interpret_pp_plots(result)
+    elif analysis_type == "qq_plots":
+        return _interpret_qq_plots(result)
     
     # Fallback
     return Interpretation(
@@ -454,6 +460,54 @@ def _interpret_kmeans(result: NormalizedResult) -> Interpretation:
     
     academic_en = f"A K-Means cluster analysis was performed to identify homogeneous subgroups. A {k}-factor solution was achieved after {iters} iterations, providing a clear classification of the sample based on the analyzed variables."
     academic_tr = f"Homojen alt grupları belirlemek amacıyla K-Ortalamalar kümeleme analizi uygulanmıştır. {iters} yineleme sonunda {k} kümeli bir çözüm elde edilmiş olup, örneklemin analiz edilen değişkenler bazında net bir sınıflaması yapılmıştır."
+
+    return Interpretation(
+        summary_en=summary_en,
+        summary_tr=summary_tr,
+        academic_sentence_en=academic_en,
+        academic_sentence_tr=academic_tr
+    )
+
+def _interpret_ratio(result: NormalizedResult) -> Interpretation:
+    v = result.variables
+    num = v.get("numerator", "Numerator")
+    den = v.get("denominator", "Denominator")
+    
+    summary_en = f"Ratio statistics were calculated between {num} and {den}. This analysis describes the proportional relationship between these two variables."
+    summary_tr = f"{num} ve {den} değişkenleri arasında oran istatistikleri hesaplanmıştır. Bu analiz, bu iki değişken arasındaki oransal ilişkiyi tanımlar."
+    
+    academic_en = f"A ratio analysis was performed using {num} as the numerator and {den} as the denominator. Descriptive metrics including PRD and COD were evaluated to assess the distribution of the ratios."
+    academic_tr = f"{num} pay ve {den} payda olacak şekilde oran analizi yapılmıştır. Oranların dağılımını değerlendirmek amacıyla PRD ve COD gibi metrikler hesaplanmıştır."
+
+    return Interpretation(
+        summary_en=summary_en,
+        summary_tr=summary_tr,
+        academic_sentence_en=academic_en,
+        academic_sentence_tr=academic_tr
+    )
+
+def _interpret_pp_plots(result: NormalizedResult) -> Interpretation:
+    vars_list = result.variables.get("analyzed", [])
+    summary_en = f"Normal P-P plots were constructed for {', '.join(vars_list)} to assess normality. Data points falling along the diagonal indicate a normal distribution."
+    summary_tr = f"Normallik varsayımını değerlendirmek amacıyla {', '.join(vars_list)} için Normal P-P grafikleri oluşturulmuştur. Köşegen çizgi üzerindeki noktalar normal dağılıma işaret eder."
+    
+    academic_en = f"The normality of the distribution for {', '.join(vars_list)} was visually inspected using Normal P-P plots. The proximity of the observed cumulative probabilities to the expected normal line suggests the degree of normality."
+    academic_tr = f"{', '.join(vars_list)} değişkenlerinin dağılım normalliği Normal P-P grafikleri ile görsel olarak incelenmiştir. Gözlenen kümülatif olasılıkların beklenen normal çizgiye yakınlığı, normallik derecesini göstermektedir."
+
+    return Interpretation(
+        summary_en=summary_en,
+        summary_tr=summary_tr,
+        academic_sentence_en=academic_en,
+        academic_sentence_tr=academic_tr
+    )
+
+def _interpret_qq_plots(result: NormalizedResult) -> Interpretation:
+    vars_list = result.variables.get("analyzed", [])
+    summary_en = f"Normal Q-Q plots were generated for {', '.join(vars_list)}. These plots compare sample quantiles against theoretical normal quantiles."
+    summary_tr = f"{', '.join(vars_list)} için Normal Q-Q grafikleri üretilmiştir. Bu grafikler örneklem kuantillerini teorik normal kuantillerle karşılaştırır."
+    
+    academic_en = f"Quantile-Quantile (Q-Q) plots were utilized to evaluate the distributional characteristics of {', '.join(vars_list)}. Departures from the diagonal line represent deviations from normality."
+    academic_tr = f"{', '.join(vars_list)} değişkenlerinin dağılım özelliklerini değerlendirmek için Kuantil-Kuantil (Q-Q) grafikleri kullanılmıştır. Köşegen çizgiden sapmalar, normallikten uzaklaşmayı temsil eder."
 
     return Interpretation(
         summary_en=summary_en,
