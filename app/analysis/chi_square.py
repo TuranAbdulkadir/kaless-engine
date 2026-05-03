@@ -90,34 +90,38 @@ def run_chi_square_independence(
 
     duration = int((time.time() - start) * 1000)
 
-        from app.utils.interpretation import generate_interpretation
-        res = NormalizedResult(
-            analysis_type="chi_square_independence",
-            title=f"Chi-Square Test of Independence — {variable1} × {variable2}",
-            variables={"variable1": variable1, "variable2": variable2},
-            assumptions=assumptions,
-            primary=PrimaryResult(
-                statistic_name="χ²",
-                statistic_value=round(float(chi2), 4),
-                df=float(dof),
-                p_value=round(float(p_value), 6),
-                p_value_formatted=format_p(float(p_value)),
-                significance=sig,
-                alpha=alpha,
-            ),
-            effect_size=effect,
-            crosstab=observed_dict,
-            charts=[ChartData(
-                chart_type="stacked_bar",
+    from app.utils.interpretation import generate_interpretation
+    res = NormalizedResult(
+        analysis_type="chi_square_independence",
+        title=f"Chi-Square Test of Independence — {variable1} × {variable2}",
+        variables={"variable1": variable1, "variable2": variable2},
+        assumptions=assumptions,
+        primary=PrimaryResult(
+            statistic_name="χ²",
+            statistic_value=round(float(chi2), 4),
+            df=float(dof),
+            p_value=round(float(p_value), 6),
+            p_value_formatted=format_p(float(p_value)),
+            significance=sig,
+        ),
+        output_blocks=output_blocks,
+        charts=[
+            ChartData(
+                title="Observed Frequencies (Heatmap data)",
+                chart_type="heatmap",
                 data=chart_data,
-                config={"title": f"{variable1} × {variable2}", "xLabel": variable1, "yLabel": "Count"},
-            )],
-            warnings=warnings,
-            metadata={
-                "n_total": len(df), "missing_excluded": n_dropped,
-                "library": "scipy.stats", "duration_ms": duration,
-                "timestamp": datetime.utcnow().isoformat(),
-            },
-        )
-        res.interpretation = generate_interpretation(res)
-        return res
+            )
+        ],
+        warnings=warnings,
+        metadata={
+            "n_total": len(df),
+            "missing_excluded": excluded_n,
+            "valid_n": valid_n,
+            "cramers_v": round(float(cv), 4),
+            "phi": round(float(phi), 4),
+            "duration_ms": duration,
+            "timestamp": datetime.utcnow().isoformat(),
+        },
+    )
+    res.interpretation = generate_interpretation(res)
+    return res

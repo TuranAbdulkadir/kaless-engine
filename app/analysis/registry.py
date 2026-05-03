@@ -16,7 +16,7 @@ from app.schemas.results import NormalizedResult
 from app.utils.errors import ValidationError
 
 # Import all completed analysis modules
-from app.analysis.descriptives import run_descriptives, run_frequencies, run_ratio, run_pp_plots
+from app.analysis.descriptives import run_descriptives, run_frequencies, run_ratio, run_pp_plots, run_explore
 from app.analysis.ttest import calculate_independent_t, calculate_paired_t, run_one_sample_t_test
 from app.analysis.anova import run_one_way_anova
 from app.analysis.chi_square import run_chi_square_independence
