@@ -88,6 +88,8 @@ def generate_docx(result: dict) -> bytes:
             rows = content.get("rows", [])
             
             if not columns or not rows:
+                p = doc.add_paragraph()
+                p.add_run(f"Note. No data available for {b_title}.").italic = True
                 continue
             
             # --- APA 7 Table Label ---

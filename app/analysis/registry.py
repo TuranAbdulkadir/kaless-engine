@@ -427,24 +427,23 @@ def dispatch_analysis(
         ValidationError on unknown analysis type or missing required params.
     """
     if analysis_type not in ANALYSIS_REGISTRY or not ANALYSIS_REGISTRY.get(analysis_type, {}).get("implemented", False) or ANALYSIS_REGISTRY.get(analysis_type, {}).get("func") is None:
-        from app.schemas.results import NormalizedResult, OutputBlock, OutputBlockType, TableData
+        from app.schemas.results import NormalizedResult, OutputBlock, OutputBlockType
         
         display_name = analysis_type.replace("_", " ").title()
         if analysis_type in ANALYSIS_REGISTRY:
             display_name = ANALYSIS_REGISTRY[analysis_type]["display_name"]
             
         # Use descriptive stats as a robust generic fallback for "functional" feel
-        # Select only numeric columns for the describe to avoid errors
         numeric_df = df.select_dtypes(include='number')
         if not numeric_df.empty:
             desc = numeric_df.describe().round(3).reset_index()
             desc.rename(columns={"index": "Statistic"}, inplace=True)
-            table_content = TableData(
-                headers=list(desc.columns),
-                rows=desc.astype(str).to_dict(orient="records")
-            ).dict()
+            table_content = {
+                "headers": list(desc.columns),
+                "rows": desc.astype(str).to_dict(orient="records")
+            }
         else:
-            table_content = TableData(headers=["Status"], rows=[{"Status": "No numeric variables available for baseline analysis."}]).dict()
+            table_content = {"headers": ["Status"], "rows": [{"Status": "No numeric variables available for baseline analysis."}]}
 
         return NormalizedResult(
             analysis_type=analysis_type,

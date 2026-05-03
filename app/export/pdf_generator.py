@@ -36,28 +36,38 @@ def _generate_matplotlib_chart(chart_type: str, data: list, config: dict) -> io.
     spss_blue = "#1c4e80" # Deeper, more academic blue
     accent_gray = "#7e909a"
     
-    if chart_type in ['bar', 'histogram']:
-        names = [str(d.get('name')) for d in data]
+    if not data:
+        ax.text(0.5, 0.5, "No Data Available for Chart", ha='center', va='center', color='gray')
+        ax.set_axis_off()
+    elif chart_type in ['bar', 'histogram']:
+        names = [str(d.get('name', '')) for d in data]
         values = [d.get('value', 0) for d in data]
-        color = accent_gray if chart_type == 'histogram' else spss_blue
-        
-        bars = ax.bar(names, values, color=color, edgecolor='black', linewidth=0.5, alpha=0.9)
-        if chart_type == 'histogram':
-            for bar in bars:
-                bar.set_width(1.0)
-        
-        plt.xticks(rotation=30, ha='right', fontsize=9)
-        
+        if not values or all(v == 0 for v in values):
+             ax.text(0.5, 0.5, "No Values Found", ha='center', va='center', color='gray')
+        else:
+            color = accent_gray if chart_type == 'histogram' else spss_blue
+            bars = ax.bar(names, values, color=color, edgecolor='black', linewidth=0.5, alpha=0.9)
+            if chart_type == 'histogram':
+                for bar in bars:
+                    bar.set_width(1.0)
+            plt.xticks(rotation=30, ha='right', fontsize=9)
+            
     elif chart_type in ['line', 'area']:
-        names = [str(d.get('name')) for d in data]
+        names = [str(d.get('name', '')) for d in data]
         values = [d.get('value', 0) for d in data]
-        ax.plot(names, values, color=spss_blue, marker='o', linestyle='-', linewidth=1.5, markersize=5, markerfacecolor='white')
-        plt.xticks(rotation=30, ha='right', fontsize=9)
-        
+        if not values:
+             ax.text(0.5, 0.5, "No Data Points Found", ha='center', va='center', color='gray')
+        else:
+            ax.plot(names, values, color=spss_blue, marker='o', linestyle='-', linewidth=1.5, markersize=5, markerfacecolor='white')
+            plt.xticks(rotation=30, ha='right', fontsize=9)
+            
     elif chart_type == 'scatter':
         xs = [d.get('x') for d in data if 'x' in d]
         ys = [d.get('y') for d in data if 'y' in d]
-        ax.scatter(xs, ys, color=spss_blue, alpha=0.7, edgecolor='black', s=40)
+        if not xs or not ys:
+             ax.text(0.5, 0.5, "No X/Y Pairs Found", ha='center', va='center', color='gray')
+        else:
+            ax.scatter(xs, ys, color=spss_blue, alpha=0.7, edgecolor='black', s=40)
         
     elif chart_type == 'pie':
         names = [str(d.get('name')) for d in data]
@@ -185,6 +195,8 @@ def generate_pdf(result: dict) -> bytes:
             rows = content.get("rows", [])
             
             if not columns or not rows:
+                story.append(Paragraph("<i>No data available for this table.</i>", body_style))
+                table_counter += 1
                 continue
                 
             matrix = [columns]
