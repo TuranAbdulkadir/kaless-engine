@@ -294,7 +294,13 @@ def run_pp_plots(
         title="P-P Plots",
         variables={"analyzed": variables},
         charts=charts,
-        output_blocks=[OutputBlock(block_type=OutputBlockType.TEXT, title="P-P Plot Processed", content="Normal P-P Plots generated.")],
+        output_blocks=[
+            OutputBlock(
+                block_type=OutputBlockType.TEXT, 
+                title="P-P Plot Processed", 
+                content={"text": "Normal P-P Plots generated. The plots visualize the cumulative distribution of the data against a theoretical normal distribution."}
+            )
+        ],
         metadata={"library": "scipy.stats", "timestamp": datetime.utcnow().isoformat()}
     )
     res.interpretation = generate_interpretation(res)
@@ -325,7 +331,13 @@ def run_qq_plots(
         title="Q-Q Plots",
         variables={"analyzed": variables},
         charts=charts,
-        output_blocks=[OutputBlock(block_type=OutputBlockType.TEXT, title="Q-Q Plot Processed", content="Normal Q-Q Plots generated.")],
+        output_blocks=[
+            OutputBlock(
+                block_type=OutputBlockType.TEXT, 
+                title="Q-Q Plot Processed", 
+                content={"text": "Normal Q-Q Plots generated. These plots compare the quantiles of the data distribution with the quantiles of a normal distribution."}
+            )
+        ],
         metadata={"library": "scipy.stats", "timestamp": datetime.utcnow().isoformat()}
     )
     res.interpretation = generate_interpretation(res)
@@ -334,12 +346,17 @@ def run_qq_plots(
 
 def run_crosstabs(
     df: pd.DataFrame,
-    rows: str,
-    columns: str,
+    rows: str | list[str],
+    columns: str | list[str],
 ) -> NormalizedResult:
     """Generate Crosstabulation table."""
     from app.analysis.chi_square import run_chi_square_independence
-    return run_chi_square_independence(df, rows, columns)
+    
+    # Handle list inputs from frontend
+    row_var = rows[0] if isinstance(rows, list) else rows
+    col_var = columns[0] if isinstance(columns, list) else columns
+    
+    return run_chi_square_independence(df, row_var, col_var)
 
 
 def run_explore(

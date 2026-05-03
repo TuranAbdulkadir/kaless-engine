@@ -20,7 +20,7 @@ from app.core.assumptions import check_independence_expected_freq, build_assumpt
 from app.core.effect_sizes import cramers_v
 from app.core.interpretation import determine_significance, interpret_chi_square, format_p
 from app.schemas.results import (
-    NormalizedResult, PrimaryResult, ChartData,
+    NormalizedResult, PrimaryResult, ChartData, OutputBlock, OutputBlockType
 )
 
 
@@ -65,20 +65,53 @@ def run_chi_square_independence(
     min_dim = min(ct.shape[0], ct.shape[1])
     effect = cramers_v(float(chi2), n, min_dim)
 
-    # Crosstab data
-    observed_dict = {
-        "rows": ct.index.tolist(),
-        "columns": ct.columns.tolist(),
-        "observed": ct.values.tolist(),
-        "expected": expected.tolist(),
-        "row_totals": ct.sum(axis=1).tolist(),
-        "column_totals": ct.sum(axis=0).tolist(),
-        "grand_total": n,
-    }
+    # Crosstab data for output blocks
+    table_rows = []
+    for i, row_val in enumerate(ct.index):
+        row_dict = {"Row": str(row_val)}
+        for j, col_val in enumerate(ct.columns):
+            row_dict[str(col_val)] = f"{ct.iloc[i, j]} (Exp: {expected[i, j]:.1f})"
+        row_dict["Total"] = int(ct.sum(axis=1).iloc[i])
+        table_rows.append(row_dict)
+    
+    # Add column totals
+    col_totals = {"Row": "Total"}
+    for j, col_val in enumerate(ct.columns):
+        col_totals[str(col_val)] = int(ct.sum(axis=0).iloc[j])
+    col_totals["Total"] = n
+    table_rows.append(col_totals)
 
-    # Stringify for JSON safety
-    observed_dict["rows"] = [str(r) for r in observed_dict["rows"]]
-    observed_dict["columns"] = [str(c) for c in observed_dict["columns"]]
+    output_blocks = [
+        OutputBlock(
+            block_type=OutputBlockType.TABLE,
+            title=f"Crosstabulation: {variable1} * {variable2}",
+            content={
+                "columns": ["Row"] + [str(c) for c in ct.columns] + ["Total"],
+                "rows": table_rows
+            }
+        ),
+        OutputBlock(
+            block_type=OutputBlockType.TABLE,
+            title="Chi-Square Tests",
+            content={
+                "columns": ["Test", "Value", "df", "Asymp. Sig. (2-sided)"],
+                "rows": [
+                    {
+                        "Test": "Pearson Chi-Square",
+                        "Value": f"{chi2:.3f}",
+                        "df": int(dof),
+                        "Asymp. Sig. (2-sided)": format_p(p_value)
+                    },
+                    {
+                        "Test": "N of Valid Cases",
+                        "Value": str(n),
+                        "df": "",
+                        "Asymp. Sig. (2-sided)": ""
+                    }
+                ]
+            }
+        )
+    ]
 
     # Chart: stacked bar
     chart_data = []
@@ -107,18 +140,18 @@ def run_chi_square_independence(
         output_blocks=output_blocks,
         charts=[
             ChartData(
-                title="Observed Frequencies (Heatmap data)",
-                chart_type="heatmap",
+                title="Observed Frequencies",
+                chart_type="bar",
                 data=chart_data,
+                config={"stacked": True, "xLabel": variable1, "yLabel": "Frequency"}
             )
         ],
         warnings=warnings,
         metadata={
             "n_total": len(df),
-            "missing_excluded": excluded_n,
-            "valid_n": valid_n,
-            "cramers_v": round(float(cv), 4),
-            "phi": round(float(phi), 4),
+            "missing_excluded": n_dropped,
+            "valid_n": n,
+            "cramers_v": round(float(effect), 4),
             "duration_ms": duration,
             "timestamp": datetime.utcnow().isoformat(),
         },
