@@ -7,6 +7,7 @@ from scipy import stats
 
 from app.core.preprocessing import validate_variable_exists, validate_numeric, drop_missing_listwise
 from app.schemas.results import NormalizedResult, PrimaryResult, GroupDescriptive, SignificanceLevel, OutputBlock, OutputBlockType
+from app.utils.interpretation import generate_interpretation
 
 def get_significance_level(p: float, alpha: float = 0.05) -> SignificanceLevel:
     if p < alpha:
@@ -132,7 +133,7 @@ def calculate_independent_t(df: pd.DataFrame, test_var: str, group_var: str, gro
             )
         ]
         
-        return NormalizedResult(
+        res = NormalizedResult(
             analysis_type="independent_t",
             title="Independent Samples T-Test",
             variables={"test_variable": test_var, "grouping_variable": group_var},
@@ -142,6 +143,8 @@ def calculate_independent_t(df: pd.DataFrame, test_var: str, group_var: str, gro
             warnings=warnings,
             metadata={"n_total": len(df), "valid_n": len(cleaned), "duration_ms": int((time.time() - start) * 1000), "timestamp": datetime.utcnow().isoformat()}
         )
+        res.interpretation = generate_interpretation(res)
+        return res
     except Exception as e:
         raise ValueError(f"Independent T-Test failed: {str(e)}")
 
@@ -202,7 +205,7 @@ def calculate_paired_t(df: pd.DataFrame, var1: str, var2: str, alpha: float = 0.
             )
         ]
         
-        return NormalizedResult(
+        res = NormalizedResult(
             analysis_type="paired_t",
             title="Paired Samples T-Test",
             variables={"pair": [var1, var2]},
@@ -212,6 +215,8 @@ def calculate_paired_t(df: pd.DataFrame, var1: str, var2: str, alpha: float = 0.
             warnings=warnings,
             metadata={"n_total": len(df), "valid_n": len(cleaned), "duration_ms": int((time.time() - start) * 1000), "timestamp": datetime.utcnow().isoformat()}
         )
+        res.interpretation = generate_interpretation(res)
+        return res
     except Exception as e:
         raise ValueError(f"Paired T-Test failed: {str(e)}")
 def run_one_sample_t_test(df: pd.DataFrame, variable: str, test_value: float = 0.0, alpha: float = 0.05) -> NormalizedResult:
@@ -272,15 +277,28 @@ def run_one_sample_t_test(df: pd.DataFrame, variable: str, test_value: float = 0
     ]
 
     duration = int((time.time() - start) * 1000)
-    return NormalizedResult(
+    res = NormalizedResult(
         analysis_type="one_sample_t_test",
         title="One-Sample T Test",
         variables={"test": [variable]},
+        descriptives=[GroupDescriptive(name=variable, n=valid_n, mean=mean, sd=std)],
         output_blocks=output_blocks,
         warnings=warnings,
+        primary=PrimaryResult(
+            statistic_name="t",
+            statistic_value=float(t_stat),
+            df=float(df_val),
+            p_value=float(p_val),
+            p_value_formatted=f"p < .001" if p_val < 0.001 else f"p = {p_val:.3f}",
+            significance=get_significance_level(p_val, alpha),
+            alpha=alpha
+        ),
         metadata={
             "valid_n": valid_n,
+            "test_value": test_value,
             "duration_ms": duration,
             "timestamp": datetime.utcnow().isoformat()
         }
     )
+    res.interpretation = generate_interpretation(res)
+    return res

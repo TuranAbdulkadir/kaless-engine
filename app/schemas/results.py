@@ -163,11 +163,14 @@ class PostHocPair(BaseModel):
 
 
 class Interpretation(BaseModel):
-    """Human-readable interpretation of results."""
+    """Human-readable interpretation of results in multiple languages."""
 
-    summary: str  # Plain language
-    academic_sentence: str  # APA-style wording
-    recommendations: list[str] = []
+    summary_en: str
+    summary_tr: str
+    academic_sentence_en: str
+    academic_sentence_tr: str
+    recommendations_en: list[str] = []
+    recommendations_tr: list[str] = []
 
 
 # --- Output Block ---

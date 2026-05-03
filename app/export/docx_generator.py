@@ -173,15 +173,29 @@ def generate_docx(result: dict) -> bytes:
             
     # 4. Academic Interpretation (APA write-up)
     interp = result.get("interpretation")
-    if interp and interp.get("academic_sentence"):
+    lang = result.get("metadata", {}).get("language", "en")
+    
+    if interp:
         doc.add_page_break()
-        h = doc.add_heading("Result Interpretation", level=1)
+        title = "Raporlama ve Yorumlama" if lang == 'tr' else "Result Interpretation"
+        h = doc.add_heading(title, level=1)
         h.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
-        # Indented and double spaced as per APA
-        p = doc.add_paragraph(interp.get("academic_sentence", ""))
-        p.paragraph_format.first_line_indent = Inches(0.5)
-        p.paragraph_format.line_spacing = 2.0
+        # Summary
+        sum_text = interp.get(f"summary_{lang}", interp.get("summary_en", ""))
+        if sum_text:
+            p_sum = doc.add_paragraph()
+            p_sum.add_run(f"{'Özet' if lang == 'tr' else 'Summary'}: ").bold = True
+            p_sum.add_run(sum_text).italic = True
+            p_sum.paragraph_format.line_spacing = 1.5
+            p_sum.paragraph_format.space_after = Pt(12)
+
+        # Academic sentence
+        acad_text = interp.get(f"academic_sentence_{lang}", interp.get("academic_sentence_en", ""))
+        if acad_text:
+            p_acad = doc.add_paragraph(acad_text)
+            p_acad.paragraph_format.first_line_indent = Inches(0.5)
+            p_acad.paragraph_format.line_spacing = 2.0
         
     # 5. Professional Footer
     doc.add_paragraph()

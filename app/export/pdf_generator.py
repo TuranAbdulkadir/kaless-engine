@@ -272,10 +272,22 @@ def generate_pdf(result: dict) -> bytes:
             
     # 3. Interpretation
     interp = result.get("interpretation")
-    if interp and interp.get("academic_sentence"):
-        story.append(Spacer(1, 0.5*inch))
-        story.append(Paragraph("Reporting (APA Style)", h1_style))
-        story.append(Paragraph(interp.get("academic_sentence", ""), body_style))
+    lang = result.get("metadata", {}).get("language", "en")
+    
+    if interp:
+        story.append(Spacer(1, 0.5 * inch))
+        title = "Raporlama (APA Stili)" if lang == 'tr' else "Reporting (APA Style)"
+        story.append(Paragraph(title, h1_style))
+        
+        # summary
+        sum_text = interp.get(f"summary_{lang}", interp.get("summary_en", ""))
+        if sum_text:
+            story.append(Paragraph(f"<b>{('Özet' if lang == 'tr' else 'Summary')}:</b> {sum_text}", body_style))
+        
+        # academic sentence
+        acad_text = interp.get(f"academic_sentence_{lang}", interp.get("academic_sentence_en", ""))
+        if acad_text:
+            story.append(Paragraph(acad_text, body_style))
         
     # 4. Professional Footer
     story.append(Spacer(1, 1*inch))

@@ -22,6 +22,7 @@ from app.schemas.results import (
     NormalizedResult, GroupDescriptive, ChartData,
     Interpretation, OutputBlock, OutputBlockType
 )
+from app.utils.interpretation import generate_interpretation
 
 
 def run_descriptives(
@@ -93,7 +94,7 @@ def run_descriptives(
         )
     ]
 
-    return NormalizedResult(
+    res = NormalizedResult(
         analysis_type="descriptives",
         title="Descriptive Statistics",
         variables={"analyzed": variables},
@@ -101,11 +102,6 @@ def run_descriptives(
         charts=charts,
         output_blocks=output_blocks,
         warnings=warnings,
-        interpretation=Interpretation(
-            summary="; ".join(summary_parts) if summary_parts else "Descriptive statistics computed.",
-            academic_sentence="Descriptive statistics are reported in the table above.",
-            recommendations=[],
-        ),
         metadata={
             "n_total": len(df),
             "missing_excluded": n_dropped,
@@ -114,6 +110,8 @@ def run_descriptives(
             "timestamp": datetime.utcnow().isoformat(),
         },
     )
+    res.interpretation = generate_interpretation(res)
+    return res
 
 
 def run_frequencies(
