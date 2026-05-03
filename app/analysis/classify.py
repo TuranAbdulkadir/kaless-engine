@@ -254,28 +254,13 @@ def run_kmeans_cluster(
 
     duration = int((time.time() - start) * 1000)
 
-    return NormalizedResult(
+    from app.utils.interpretation import generate_interpretation
+
+    res = NormalizedResult(
         analysis_type="kmeans_cluster",
         title="K-Means Cluster Analysis",
         variables={"cluster_variables": variables},
         output_blocks=output_blocks,
-        interpretation=Interpretation(
-            summary=(
-                f"K-Means clustering grouped {n} cases into {n_clusters} clusters "
-                f"using {len(variables)} variable(s). "
-                f"Convergence was achieved in {n_iter} iteration(s)."
-            ),
-            academic_sentence=(
-                f"A K-Means cluster analysis was performed on {len(variables)} variables "
-                f"(N = {n}), specifying a {n_clusters}-cluster solution. "
-                f"The algorithm converged after {n_iter} iteration(s) with a final "
-                f"inertia (within-cluster sum of squares) of {round(inertia, 2)}."
-            ),
-            recommendations=[
-                "Examine the Final Cluster Centers to interpret the meaning of each cluster.",
-                "Consider validating the solution using Discriminant Analysis or cross-validation.",
-            ],
-        ),
         warnings=warnings,
         metadata={
             "n_total": len(df),
@@ -292,3 +277,5 @@ def run_kmeans_cluster(
             "timestamp": datetime.utcnow().isoformat(),
         },
     )
+    res.interpretation = generate_interpretation(res)
+    return res

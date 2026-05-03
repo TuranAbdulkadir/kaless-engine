@@ -71,9 +71,22 @@ def run_neural_network(df: pd.DataFrame, dependent: str, covariates: list[str], 
             )
         ]
 
-    return NormalizedResult(
+    from app.utils.interpretation import generate_interpretation
+
+    res = NormalizedResult(
+        analysis_type="neural_network",
         title="Neural Network (Multilayer Perceptron)",
-        variables={"analyzed": [dependent] + covariates + (factors or [])},
+        variables={"dependent": dependent, "covariates": covariates},
         output_blocks=output_blocks,
-        interpretation={"academic_sentence": "A multilayer perceptron neural network was trained on the dataset."}
+        metadata={
+            "n_train": len(X_train),
+            "n_test": len(X_test),
+            "is_categorical": is_categorical,
+            "accuracy": accuracy if is_categorical else None,
+            "r2": r2 if not is_categorical else None,
+            "duration_ms": 0,
+            "timestamp": pd.Timestamp.utcnow().isoformat()
+        }
     )
+    res.interpretation = generate_interpretation(res)
+    return res

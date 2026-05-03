@@ -101,15 +101,16 @@ class ConfidenceInterval(BaseModel):
 
 
 class PrimaryResult(BaseModel):
-    """The main statistical test result."""
-
-    statistic_name: str  # "t", "F", "χ²", "U", "W", "r", "rho", "tau"
+    """The main statistical test value (e.g., t, F, Chi-Square)."""
+    statistic_name: str
     statistic_value: float
-    df: float | None = None
-    df2: float | None = None  # For F-tests
+    df: float
+    df2: Optional[float] = None # Added for ANOVA (df_within)
     p_value: float
     p_value_formatted: str  # "p = .017" or "p < .001"
     significance: SignificanceLevel
+    effect_size: Optional[float] = None
+    effect_size_type: Optional[str] = None
     alpha: float = 0.05
 
 

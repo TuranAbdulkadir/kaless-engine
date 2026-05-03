@@ -134,13 +134,44 @@ def run_one_way_anova(df: pd.DataFrame, dependent: str, factor: str) -> Normaliz
         except Exception as e:
             warnings.append(f"Could not compute Tukey HSD Post-Hoc: {str(e)}")
 
+    # Descriptives for the groups
+    descriptives = []
+    for name, group in groups:
+        descriptives.append({
+            "name": str(name),
+            "n": len(group),
+            "mean": float(group.mean()),
+            "sd": float(group.std()) if len(group) > 1 else 0.0,
+            "se": float(group.std() / np.sqrt(len(group))) if len(group) > 1 else 0.0,
+            "min": float(group.min()),
+            "max": float(group.max())
+        })
+
+    # Prepare Primary Statistic
+    p_formatted = "p < .001" if p_value < 0.001 else f"p = {p_value:.3f}"
+    sig = "significant" if p_value < 0.05 else "not_significant"
+    
+    primary = {
+        "statistic_name": "F",
+        "statistic_value": float(f_stat),
+        "df": float(df_between),
+        "df2": float(df_within),
+        "p_value": float(p_value),
+        "p_value_formatted": p_formatted,
+        "significance": sig
+    }
+
     duration = int((time.time() - start) * 1000)
 
-    return NormalizedResult(
+    from app.utils.interpretation import generate_interpretation
+
+    res = NormalizedResult(
         analysis_type="one_way_anova",
         title="One-Way ANOVA",
         variables={"dependent": [dependent], "factor": [factor]},
+        descriptives=descriptives,
         output_blocks=output_blocks,
+        primary=primary,
         warnings=warnings,
         metadata={
             "n_total": len(df),
@@ -150,3 +181,5 @@ def run_one_way_anova(df: pd.DataFrame, dependent: str, factor: str) -> Normaliz
             "timestamp": datetime.utcnow().isoformat(),
         },
     )
+    res.interpretation = generate_interpretation(res)
+    return res

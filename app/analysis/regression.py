@@ -145,12 +145,31 @@ def run_linear_regression(df: pd.DataFrame, dependent: str, independents: list[s
         )
     ]
 
-    return NormalizedResult(
+    from app.utils.interpretation import generate_interpretation
+
+    res = NormalizedResult(
         analysis_type="linear_regression",
         title="Regression",
         variables={"dependent": [dependent], "independent": independents},
         output_blocks=output_blocks,
         warnings=warnings,
-        metadata={"valid_n": valid_n, "duration_ms": duration, "timestamp": datetime.utcnow().isoformat()}
+        primary={
+            "statistic_name": "F",
+            "statistic_value": float(results.fvalue),
+            "df": float(results.df_model),
+            "df2": float(results.df_resid),
+            "p_value": float(results.f_pvalue),
+            "p_value_formatted": "p < .001" if results.f_pvalue < 0.001 else f"p = {results.f_pvalue:.3f}",
+            "significance": "significant" if results.f_pvalue < 0.05 else "not_significant"
+        },
+        metadata={
+            "valid_n": valid_n, 
+            "duration_ms": duration, 
+            "timestamp": datetime.utcnow().isoformat(),
+            "r_squared": float(r_squared),
+            "adj_r_squared": float(adj_r_squared)
+        }
     )
+    res.interpretation = generate_interpretation(res)
+    return res
 

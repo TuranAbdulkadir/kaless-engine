@@ -347,3 +347,76 @@ def run_pp_plots(
             "timestamp": datetime.utcnow().isoformat(),
         },
     )
+def run_explore(
+    df: pd.DataFrame,
+    dependent: list[str],
+    grouping: str,
+    alpha: float = 0.05,
+) -> NormalizedResult:
+    """Detailed exploration of dependents by grouping factor."""
+    start = time.time()
+    warnings: list[str] = []
+
+    for v in dependent:
+        validate_variable_exists(df, v)
+        validate_numeric(df[v], v)
+    validate_variable_exists(df, grouping)
+
+    # Drop missing listwise for all involved vars
+    vars_to_clean = dependent + [grouping]
+    cleaned, n_dropped = drop_missing_listwise(df, vars_to_clean)
+    if n_dropped > 0:
+        warnings.append(f"{n_dropped} case(s) excluded due to missing values.")
+
+    output_blocks = []
+    descriptives = []
+    
+    for dep_var in dependent:
+        groups = cleaned.groupby(grouping)[dep_var]
+        
+        table_rows = []
+        for name, group in groups:
+            desc_stats = compute_descriptive(group, name=str(name))
+            descriptives.append(GroupDescriptive(**desc_stats))
+            
+            table_rows.append({
+                "Group": str(name),
+                "N": desc_stats["n"],
+                "Mean": round(desc_stats["mean"], 3),
+                "Std. Deviation": round(desc_stats["sd"], 3),
+                "Std. Error": round(desc_stats["se"], 3),
+                "95% CI Lower": round(desc_stats["mean"] - 1.96 * desc_stats["se"], 3),
+                "95% CI Upper": round(desc_stats["mean"] + 1.96 * desc_stats["se"], 3),
+                "Min": round(desc_stats["min"], 3),
+                "Max": round(desc_stats["max"], 3)
+            })
+            
+        output_blocks.append(
+            OutputBlock(
+                block_type=OutputBlockType.TABLE,
+                title=f"Explore: {dep_var} by {grouping}",
+                content={
+                    "columns": ["Group", "N", "Mean", "Std. Deviation", "Std. Error", "95% CI Lower", "95% CI Upper", "Min", "Max"],
+                    "rows": table_rows
+                }
+            )
+        )
+
+    duration = int((time.time() - start) * 1000)
+
+    res = NormalizedResult(
+        analysis_type="explore",
+        title="Explore Analysis",
+        variables={"dependent": dependent, "factor": grouping},
+        descriptives=descriptives,
+        output_blocks=output_blocks,
+        warnings=warnings,
+        metadata={
+            "n_total": len(df),
+            "valid_n": len(cleaned),
+            "duration_ms": duration,
+            "timestamp": datetime.utcnow().isoformat(),
+        },
+    )
+    res.interpretation = generate_interpretation(res)
+    return res

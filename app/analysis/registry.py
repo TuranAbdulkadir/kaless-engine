@@ -23,6 +23,7 @@ from app.analysis.chi_square import run_chi_square_independence
 from app.analysis.correlation import calculate_correlation
 from app.analysis.regression import run_linear_regression
 from app.analysis.reliability import run_reliability
+from app.analysis.classify import run_kmeans_cluster
 from app.analysis.chart import run_chart_builder
 
 # Newly mapped modules
@@ -62,6 +63,17 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
         "required_pattern": "1 categorical/discrete variable",
         "optional": {},
         "description": "Frequency distribution for a categorical or discrete variable.",
+        "min_plan": "free",
+        "implemented": True,
+    },
+    "explore": {
+        "display_name": "Explore",
+        "category": "Descriptives",
+        "func": run_explore,
+        "required": ["dependent", "grouping"],
+        "required_pattern": "1+ numeric dependent, 1 grouping factor",
+        "optional": {"alpha": 0.05},
+        "description": "Detailed descriptive statistics by group levels.",
         "min_plan": "free",
         "implemented": True,
     },
@@ -275,6 +287,17 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
         "optional": {},
         "description": "Analyze missing value patterns.",
         "min_plan": "free",
+        "implemented": True,
+    },
+    "kmeans_cluster": {
+        "display_name": "K-Means Cluster",
+        "category": "Advanced",
+        "func": run_kmeans_cluster,
+        "required": ["variables"],
+        "required_pattern": "1+ numeric variables",
+        "optional": {"n_clusters": 3, "max_iter": 300},
+        "description": "Multivariate grouping procedure (K-Means).",
+        "min_plan": "premium",
         "implemented": True,
     },
     "neural_network": {

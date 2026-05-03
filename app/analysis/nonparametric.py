@@ -122,28 +122,24 @@ def _run_chi_square(df: pd.DataFrame, params: dict) -> NormalizedResult:
 
     duration = int((time.time() - start) * 1000)
 
-    return NormalizedResult(
+    from app.utils.interpretation import generate_interpretation
+
+    res = NormalizedResult(
         analysis_type="nonparametric_chi_square",
         title="NPar Tests — Chi-Square Test",
         variables={"test_variables": variables},
         output_blocks=output_blocks,
-        interpretation=Interpretation(
-            summary="Chi-Square goodness-of-fit test compares observed frequencies to expected (equal) frequencies.",
-            academic_sentence=(
-                f"A chi-square goodness-of-fit test was conducted on {len(variables)} variable(s). "
-                "See the Test Statistics table for χ², df, and significance values."
-            ),
-            recommendations=[],
-        ),
         warnings=warnings,
         metadata={
             "n_total": len(df),
-            "missing_excluded": n_excluded,
+            "missing_excluded": n_dropped,
             "library": "scipy.stats.chisquare",
             "duration_ms": duration,
             "timestamp": datetime.utcnow().isoformat(),
         },
     )
+    res.interpretation = generate_interpretation(res)
+    return res
 
 
 # ═══════════════════════════════════════════════════════════
@@ -191,12 +187,14 @@ def _run_mann_whitney(df: pd.DataFrame, params: dict) -> NormalizedResult:
         "Asymp. Sig. (2-tailed)": {},
     }
 
+    primary_results = []
+
     for var in variables:
         x = g1[var].values.astype(float)
         y = g2[var].values.astype(float)
 
-        res = stats.mannwhitneyu(x, y, alternative="two-sided")
-        u_stat = float(res.statistic)
+        res_stats = stats.mannwhitneyu(x, y, alternative="two-sided")
+        u_stat = float(res_stats.statistic)
 
         # Compute ranks
         all_vals = np.concatenate([x, y])
@@ -225,7 +223,21 @@ def _run_mann_whitney(df: pd.DataFrame, params: dict) -> NormalizedResult:
         stats_rows_data["Mann-Whitney U"][var] = round(u_stat, 3)
         stats_rows_data["Wilcoxon W"][var] = round(w_stat, 3)
         stats_rows_data["Z"][var] = round(z_approx, 3)
-        stats_rows_data["Asymp. Sig. (2-tailed)"][var] = f"{res.pvalue:.3f}" if res.pvalue >= 0.0005 else "< .001"
+        p_val = res_stats.pvalue
+        stats_rows_data["Asymp. Sig. (2-tailed)"][var] = f"{p_val:.3f}" if p_val >= 0.0005 else "< .001"
+        
+        # Primary for first var
+        if not primary_results:
+            from app.core.interpretation import determine_significance
+            sig = determine_significance(p_val)
+            primary_results.append({
+                "statistic_name": "U",
+                "statistic_value": u_stat,
+                "df": 0,
+                "p_value": p_val,
+                "p_value_formatted": f"p < .001" if p_val < 0.001 else f"p = {p_val:.3f}",
+                "significance": sig
+            })
 
     # Ranks Table
     output_blocks.append(OutputBlock(
@@ -263,19 +275,13 @@ def _run_mann_whitney(df: pd.DataFrame, params: dict) -> NormalizedResult:
 
     duration = int((time.time() - start) * 1000)
 
-    return NormalizedResult(
+    from app.utils.interpretation import generate_interpretation
+    res = NormalizedResult(
         analysis_type="nonparametric_mann_whitney",
         title="NPar Tests — Mann-Whitney U",
         variables={"test_variables": variables, "grouping": [grouping_var]},
         output_blocks=output_blocks,
-        interpretation=Interpretation(
-            summary="Mann-Whitney U test compares differences between two independent groups on a continuous measure.",
-            academic_sentence=(
-                f"A Mann-Whitney U test was conducted to compare {', '.join(variables)} "
-                f"across groups defined by {grouping_var} ({val1} vs {val2})."
-            ),
-            recommendations=[],
-        ),
+        primary=primary_results[0] if primary_results else None,
         warnings=warnings,
         metadata={
             "n_total": len(df),
@@ -285,6 +291,8 @@ def _run_mann_whitney(df: pd.DataFrame, params: dict) -> NormalizedResult:
             "timestamp": datetime.utcnow().isoformat(),
         },
     )
+    res.interpretation = generate_interpretation(res)
+    return res
 
 
 # ═══════════════════════════════════════════════════════════
@@ -299,8 +307,7 @@ def _run_wilcoxon(df: pd.DataFrame, params: dict) -> NormalizedResult:
     if len(variables) < 2:
         raise ValidationError("Wilcoxon test requires at least two variables (a paired pair).")
 
-    # Build pairs: take consecutive pairs [v1, v2], [v3, v4], ...
-    # Or if exactly 2 variables, that's one pair.
+    # Build pairs
     pairs = []
     if len(variables) == 2:
         pairs = [(variables[0], variables[1])]
@@ -312,6 +319,8 @@ def _run_wilcoxon(df: pd.DataFrame, params: dict) -> NormalizedResult:
     ranks_rows = []
     stats_cols = [""]
     stats_rows_data = {"Z": {}, "Asymp. Sig. (2-tailed)": {}}
+
+    primary_results = []
 
     for var1, var2 in pairs:
         validate_variable_exists(df, var1)
@@ -354,14 +363,14 @@ def _run_wilcoxon(df: pd.DataFrame, params: dict) -> NormalizedResult:
 
         # Run Wilcoxon test
         try:
-            res = stats.wilcoxon(x, y, alternative="two-sided")
+            res_stats = stats.wilcoxon(x, y, alternative="two-sided")
             # Z approximation
-            T_stat = float(res.statistic)
+            T_stat = float(res_stats.statistic)
             n_nonzero = len(abs_diff)
             mu_T = n_nonzero * (n_nonzero + 1) / 4.0
             sigma_T = np.sqrt(n_nonzero * (n_nonzero + 1) * (2 * n_nonzero + 1) / 24.0)
             z_val = (T_stat - mu_T) / sigma_T if sigma_T > 0 else 0.0
-            p_val = res.pvalue
+            p_val = res_stats.pvalue
         except Exception:
             z_val = 0.0
             p_val = 1.0
@@ -370,6 +379,18 @@ def _run_wilcoxon(df: pd.DataFrame, params: dict) -> NormalizedResult:
         stats_cols.append(pair_label)
         stats_rows_data["Z"][pair_label] = round(z_val, 3)
         stats_rows_data["Asymp. Sig. (2-tailed)"][pair_label] = f"{p_val:.3f}" if p_val >= 0.0005 else "< .001"
+        
+        if not primary_results:
+            from app.core.interpretation import determine_significance
+            sig = determine_significance(p_val)
+            primary_results.append({
+                "statistic_name": "W",
+                "statistic_value": T_stat,
+                "df": 0,
+                "p_value": p_val,
+                "p_value_formatted": f"p < .001" if p_val < 0.001 else f"p = {p_val:.3f}",
+                "significance": sig
+            })
 
     # Ranks Table
     output_blocks.append(OutputBlock(
@@ -408,19 +429,13 @@ def _run_wilcoxon(df: pd.DataFrame, params: dict) -> NormalizedResult:
 
     duration = int((time.time() - start) * 1000)
 
-    return NormalizedResult(
+    from app.utils.interpretation import generate_interpretation
+    res = NormalizedResult(
         analysis_type="nonparametric_wilcoxon",
         title="NPar Tests — Wilcoxon Signed Ranks",
         variables={"paired_variables": [f"{v1},{v2}" for v1, v2 in pairs]},
         output_blocks=output_blocks,
-        interpretation=Interpretation(
-            summary="Wilcoxon Signed-Rank test compares two related (paired) samples.",
-            academic_sentence=(
-                f"A Wilcoxon Signed-Rank test was conducted on {len(pairs)} pair(s). "
-                "Results are presented in the Test Statistics table."
-            ),
-            recommendations=[],
-        ),
+        primary=primary_results[0] if primary_results else None,
         warnings=warnings,
         metadata={
             "n_total": len(df),
@@ -429,3 +444,5 @@ def _run_wilcoxon(df: pd.DataFrame, params: dict) -> NormalizedResult:
             "timestamp": datetime.utcnow().isoformat(),
         },
     )
+    res.interpretation = generate_interpretation(res)
+    return res

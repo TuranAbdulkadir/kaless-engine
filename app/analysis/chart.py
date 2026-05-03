@@ -87,6 +87,47 @@ def run_chart_builder(df: pd.DataFrame, params: dict[str, Any]) -> NormalizedRes
             for _, row in counts.iterrows():
                 data_list.append({"name": str(row[x_axis]), "value": int(row["count"])})
                 
+    elif chart_type == "box":
+        if not x_axis or x_axis not in df.columns:
+            raise ValidationError("Boxplot requires an x_axis.")
+        
+        # If y_axis is provided, it's grouped boxplot
+        if y_axis and y_axis in df.columns:
+            df_clean[x_axis] = pd.to_numeric(df_clean[x_axis], errors="coerce")
+            df_clean = df_clean.dropna(subset=[x_axis])
+            groups = df_clean.groupby(y_axis)[x_axis]
+            for name, group in groups:
+                q1 = float(group.quantile(0.25))
+                q2 = float(group.median())
+                q3 = float(group.quantile(0.75))
+                iqr = q3 - q1
+                data_list.append({
+                    "name": str(name),
+                    "min": float(group.min()),
+                    "q1": q1,
+                    "median": q2,
+                    "q3": q3,
+                    "max": float(group.max()),
+                    "outliers": [float(x) for x in group if x < q1 - 1.5 * iqr or x > q3 + 1.5 * iqr]
+                })
+        else:
+            # Single boxplot
+            df_clean[x_axis] = pd.to_numeric(df_clean[x_axis], errors="coerce")
+            df_clean = df_clean.dropna(subset=[x_axis])
+            q1 = float(df_clean[x_axis].quantile(0.25))
+            q2 = float(df_clean[x_axis].median())
+            q3 = float(df_clean[x_axis].quantile(0.75))
+            iqr = q3 - q1
+            data_list.append({
+                "name": x_axis,
+                "min": float(df_clean[x_axis].min()),
+                "q1": q1,
+                "median": q2,
+                "q3": q3,
+                "max": float(df_clean[x_axis].max()),
+                "outliers": [float(x) for x in df_clean[x_axis] if x < q1 - 1.5 * iqr or x > q3 + 1.5 * iqr]
+            })
+                
     else:
         raise ValidationError(f"Unsupported chart type: {chart_type}")
         
@@ -95,7 +136,8 @@ def run_chart_builder(df: pd.DataFrame, params: dict[str, Any]) -> NormalizedRes
         "pie": "Pie Chart",
         "histogram": "Histogram",
         "scatter": "Scatter Plot",
-        "line": "Line Chart"
+        "line": "Line Chart",
+        "box": "Boxplot"
     }
     title = title_map.get(chart_type, "Graph")
     
@@ -113,20 +155,21 @@ def run_chart_builder(df: pd.DataFrame, params: dict[str, Any]) -> NormalizedRes
         )
     ]
     
-    return NormalizedResult(
+    from app.utils.interpretation import generate_interpretation
+
+    res = NormalizedResult(
         analysis_type="chart_builder",
         title=f"GGraph - {title}",
         variables={"x_axis": x_axis, "y_axis": y_axis or ""},
         output_blocks=blocks,
-        interpretation=Interpretation(
-            summary=f"Generated a {chart_type} for '{x_axis}'.",
-            academic_sentence=f"A {chart_type} was constructed to visualize the distribution of {x_axis}{' and ' + y_axis if y_axis else ''}."
-        ),
         metadata={
             "n_total": len(df),
             "missing_excluded": len(df) - len(df_clean),
             "library": "pandas",
             "duration_ms": int((time.time() - start_time) * 1000),
-            "timestamp": pd.Timestamp.utcnow().isoformat()
+            "timestamp": pd.Timestamp.utcnow().isoformat(),
+            "chart_type": chart_type
         }
     )
+    res.interpretation = generate_interpretation(res)
+    return res
