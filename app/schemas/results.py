@@ -274,3 +274,4 @@ class NormalizedResult(BaseModel):
             "timestamp": datetime.utcnow().isoformat(),
         }
     )
+NormalizedResult.model_rebuild()
