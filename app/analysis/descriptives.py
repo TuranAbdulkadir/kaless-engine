@@ -166,7 +166,7 @@ def run_frequencies(
         )
     ]
 
-    return NormalizedResult(
+    res = NormalizedResult(
         analysis_type="frequencies",
         title=f"Frequency Table — {variable}",
         variables={"analyzed": [variable]},
@@ -187,6 +187,8 @@ def run_frequencies(
             "timestamp": datetime.utcnow().isoformat(),
         },
     )
+    res.interpretation = generate_interpretation(res)
+    return res
 
 
 def run_ratio(
