@@ -43,7 +43,7 @@ app = FastAPI(
     * **Modern Stack**: Built on FastAPI, Pandas, and Statsmodels.
     * **Cloud-First**: Designed for horizontal scaling and secure session management.
     """,
-    version="1.0.0",
+    version="1.0.1",
     lifespan=lifespan,
     openapi_tags=tags_metadata,
     docs_url="/docs",
@@ -134,10 +134,10 @@ app.include_router(syntax.router, prefix="/engine", tags=["Syntax"])
 # ============================================================
 @app.get("/")
 async def root():
-    return {"status": "ok", "service": "kaless-engine", "version": "1.0.0"}
+    return {"status": "ok", "service": "kaless-engine", "version": "1.0.1"}
 
 
 @app.get("/api/health")
 async def api_health():
     """Legacy health check path for Render."""
-    return {"status": "ok", "service": "kaless-engine", "version": "1.0.0"}
+    return {"status": "ok", "service": "kaless-engine", "version": "1.0.1"}
