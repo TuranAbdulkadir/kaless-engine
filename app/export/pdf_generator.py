@@ -39,33 +39,54 @@ def _generate_matplotlib_chart(chart_type: str, data: list, config: dict) -> io.
     if not data:
         ax.text(0.5, 0.5, "No Data Available for Chart", ha='center', va='center', color='gray')
         ax.set_axis_off()
-    elif chart_type in ['bar', 'histogram']:
-        names = [str(d.get('name', '')) for d in data]
-        values = [d.get('value', 0) for d in data]
-        if not values or all(v == 0 for v in values):
-             ax.text(0.5, 0.5, "No Values Found", ha='center', va='center', color='gray')
-        else:
-            color = accent_gray if chart_type == 'histogram' else spss_blue
-            bars = ax.bar(names, values, color=color, edgecolor='black', linewidth=0.5, alpha=0.9)
-            if chart_type == 'histogram':
-                for bar in bars:
-                    bar.set_width(1.0)
-            plt.xticks(rotation=30, ha='right', fontsize=9)
+    elif chart_type in ['bar', 'histogram', 'line', 'area']:
+        # Flexible key detection matching SPSSChartRenderer.tsx
+        names = []
+        values = []
+        for d in data:
+            # Detect X/Name key
+            n = d.get('name')
+            if n is None: n = d.get('bin')
+            if n is None: n = d.get('category')
+            if n is None: n = d.get('x')
+            names.append(str(n) if n is not None else "")
             
-    elif chart_type in ['line', 'area']:
-        names = [str(d.get('name', '')) for d in data]
-        values = [d.get('value', 0) for d in data]
-        if not values:
-             ax.text(0.5, 0.5, "No Data Points Found", ha='center', va='center', color='gray')
+            # Detect Y/Value key
+            v = d.get('value')
+            if v is None: v = d.get('count')
+            if v is None: v = d.get('frequency')
+            if v is None: v = d.get('y')
+            values.append(float(v) if v is not None else 0.0)
+
+        if not values or all(v == 0 for v in values):
+             ax.text(0.5, 0.5, "No Values Found in Data", ha='center', va='center', color='gray')
         else:
-            ax.plot(names, values, color=spss_blue, marker='o', linestyle='-', linewidth=1.5, markersize=5, markerfacecolor='white')
-            plt.xticks(rotation=30, ha='right', fontsize=9)
+            if chart_type in ['bar', 'histogram']:
+                color = accent_gray if chart_type == 'histogram' else spss_blue
+                bars = ax.bar(names, values, color=color, edgecolor='black', linewidth=0.5, alpha=0.9)
+                if chart_type == 'histogram':
+                    for bar in bars:
+                        bar.set_width(1.0)
+                plt.xticks(rotation=30, ha='right', fontsize=9)
+            else: # line / area
+                ax.plot(names, values, color=spss_blue, marker='o', linestyle='-', linewidth=1.5, markersize=5, markerfacecolor='white')
+                plt.xticks(rotation=30, ha='right', fontsize=9)
             
     elif chart_type == 'scatter':
-        xs = [d.get('x') for d in data if 'x' in d]
-        ys = [d.get('y') for d in data if 'y' in d]
+        xs = [d.get('x', d.get('X')) for d in data]
+        ys = [d.get('y', d.get('Y')) for d in data]
+        # Fallback to keys from config if missing
+        if any(x is None for x in xs) or any(y is None for y in ys):
+            x_label = config.get("x_label")
+            y_label = config.get("y_label")
+            xs = [d.get(x_label) for d in data]
+            ys = [d.get(y_label) for d in data]
+            
+        xs = [float(x) for x in xs if x is not None]
+        ys = [float(y) for y in ys if y is not None]
+        
         if not xs or not ys:
-             ax.text(0.5, 0.5, "No X/Y Pairs Found", ha='center', va='center', color='gray')
+             ax.text(0.5, 0.5, "No Scatter Points Found", ha='center', va='center', color='gray')
         else:
             ax.scatter(xs, ys, color=spss_blue, alpha=0.7, edgecolor='black', s=40)
         
