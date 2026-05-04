@@ -9,17 +9,32 @@ import statsmodels.api as sm
 from app.core.preprocessing import validate_variable_exists
 from app.schemas.results import NormalizedResult, OutputBlock, OutputBlockType
 
-def run_linear_regression(df: pd.DataFrame, dependent: str, independents: list[str]) -> NormalizedResult:
-    """Computes Linear Regression with SPSS-style output including the Holy Trinity tables."""
+def run_linear_regression(
+    df: pd.DataFrame, 
+    dependent: str | list[str], 
+    independent: list[str]
+) -> NormalizedResult:
+    """Computes Linear Regression with SPSS-style output."""
     start = time.time()
     warnings: list[str] = []
 
-    validate_variable_exists(df, dependent)
-    for var in independents:
+    # Handle list-wrapped dependent
+    dep_var = dependent[0] if isinstance(dependent, list) and len(dependent) > 0 else dependent
+    # Ensure independent is a flat list
+    ind_vars = []
+    for i in independent:
+        if isinstance(i, list): ind_vars.extend(i)
+        else: ind_vars.append(i)
+
+    if not dep_var or len(ind_vars) == 0:
+        raise ValueError("Regression requires one dependent and at least one independent variable.")
+
+    validate_variable_exists(df, dep_var)
+    for var in ind_vars:
         validate_variable_exists(df, var)
 
     # Prepare data, drop missing values listwise
-    vars_to_keep = [dependent] + independents
+    vars_to_keep = [dep_var] + ind_vars
     sub_df = df[vars_to_keep].dropna()
     valid_n = len(sub_df)
     
@@ -30,8 +45,8 @@ def run_linear_regression(df: pd.DataFrame, dependent: str, independents: list[s
         warnings.append(f"{len(df) - valid_n} case(s) excluded due to missing values.")
 
     # Variables
-    y = sub_df[dependent]
-    X = sub_df[independents]
+    y = sub_df[dep_var]
+    X = sub_df[ind_vars]
 
     # Add constant for OLS (CRITICAL — ensures the intercept is modeled)
     X_with_const = sm.add_constant(X)
@@ -89,7 +104,7 @@ def run_linear_regression(df: pd.DataFrame, dependent: str, independents: list[s
         std_betas = {}
 
     coefficients_rows = []
-    for var in ["const"] + independents:
+    for var in ["const"] + ind_vars:
         display_name = "(Constant)" if var == "const" else var
         b = results.params[var]
         se = results.bse[var]

@@ -2,6 +2,7 @@
 
 import time
 from datetime import datetime
+from typing import Any
 import pandas as pd
 from scipy import stats
 
@@ -14,9 +15,23 @@ def get_significance_level(p: float, alpha: float = 0.05) -> SignificanceLevel:
         return SignificanceLevel.SIGNIFICANT
     return SignificanceLevel.NOT_SIGNIFICANT
 
-def calculate_independent_t(df: pd.DataFrame, test_var: str, group_var: str, group1_val, group2_val, alpha: float = 0.05) -> NormalizedResult:
+def calculate_independent_t(
+    df: pd.DataFrame, 
+    test_variable: str | list[str], 
+    grouping_variable: str | list[str], 
+    group1: Any, 
+    group2: Any, 
+    alpha: float = 0.05
+) -> NormalizedResult:
+    """Computes Independent Samples T-Test."""
     start = time.time()
     warnings = []
+    
+    # Handle list inputs
+    test_var = test_variable[0] if isinstance(test_variable, list) and len(test_variable) > 0 else test_variable
+    group_var = grouping_variable[0] if isinstance(grouping_variable, list) and len(grouping_variable) > 0 else grouping_variable
+    group1_val = group1[0] if isinstance(group1, list) and len(group1) > 0 else group1
+    group2_val = group2[0] if isinstance(group2, list) and len(group2) > 0 else group2
     
     try:
         import numpy as np
@@ -148,9 +163,19 @@ def calculate_independent_t(df: pd.DataFrame, test_var: str, group_var: str, gro
     except Exception as e:
         raise ValueError(f"Independent T-Test failed: {str(e)}")
 
-def calculate_paired_t(df: pd.DataFrame, var1: str, var2: str, alpha: float = 0.05) -> NormalizedResult:
+def calculate_paired_t(
+    df: pd.DataFrame, 
+    variable1: str | list[str], 
+    variable2: str | list[str], 
+    alpha: float = 0.05
+) -> NormalizedResult:
+    """Computes Paired Samples T-Test."""
     start = time.time()
     warnings = []
+    
+    # Handle list inputs
+    var1 = variable1[0] if isinstance(variable1, list) and len(variable1) > 0 else variable1
+    var2 = variable2[0] if isinstance(variable2, list) and len(variable2) > 0 else variable2
     
     try:
         validate_variable_exists(df, var1)
@@ -219,14 +244,25 @@ def calculate_paired_t(df: pd.DataFrame, var1: str, var2: str, alpha: float = 0.
         return res
     except Exception as e:
         raise ValueError(f"Paired T-Test failed: {str(e)}")
-def run_one_sample_t_test(df: pd.DataFrame, variable: str, test_value: float = 0.0, alpha: float = 0.05) -> NormalizedResult:
+def run_one_sample_t_test(
+    df: pd.DataFrame, 
+    variable: str | list[str], 
+    test_value: float = 0.0, 
+    alpha: float = 0.05
+) -> NormalizedResult:
+    """Computes One-Sample T-Test."""
     start = time.time()
     warnings = []
 
-    validate_variable_exists(df, variable)
-    validate_numeric(df[variable], variable)
+    # Handle list input
+    var_name = variable[0] if isinstance(variable, list) and len(variable) > 0 else variable
+    if not var_name:
+        raise ValueError("One-Sample T-Test requires a variable.")
 
-    cleaned = df[variable].dropna()
+    validate_variable_exists(df, var_name)
+    validate_numeric(df[var_name], var_name)
+
+    cleaned = df[var_name].dropna()
     valid_n = len(cleaned)
 
     if valid_n < 2:
@@ -249,7 +285,7 @@ def run_one_sample_t_test(df: pd.DataFrame, variable: str, test_value: float = 0
     }]
 
     one_sample_test = [{
-        "Variable": variable,
+        "Variable": var_name,
         "t": round(t_stat, 3),
         "df": df_val,
         "Sig. (2-tailed)": round(p_val, 3),
@@ -280,8 +316,8 @@ def run_one_sample_t_test(df: pd.DataFrame, variable: str, test_value: float = 0
     res = NormalizedResult(
         analysis_type="one_sample_t_test",
         title="One-Sample T Test",
-        variables={"test": [variable]},
-        descriptives=[GroupDescriptive(name=variable, n=valid_n, mean=mean, sd=std)],
+        variables={"test": [str(var_name)]},
+        descriptives=[GroupDescriptive(name=str(var_name), n=valid_n, mean=mean, sd=std)],
         output_blocks=output_blocks,
         warnings=warnings,
         primary=PrimaryResult(

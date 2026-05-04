@@ -26,21 +26,34 @@ from app.schemas.results import (
 
 def run_chi_square_independence(
     df: pd.DataFrame,
-    variable1: str,
-    variable2: str,
+    variable1: str | list[str] = None,
+    variable2: str | list[str] = None,
+    rows: str | list[str] = None,
+    columns: str | list[str] = None,
     alpha: float = 0.05,
 ) -> NormalizedResult:
-    """Chi-square test of independence between two categorical variables."""
+    """Chi-square test of independence. Handles both variable1/2 and rows/columns naming."""
+    # Resolve aliases
+    v1 = variable1 if variable1 is not None else rows
+    v2 = variable2 if variable2 is not None else columns
+    
+    # Handle list-wrapped single strings from frontend
+    v1 = v1[0] if isinstance(v1, list) and len(v1) > 0 else v1
+    v2 = v2[0] if isinstance(v2, list) and len(v2) > 0 else v2
+
+    if v1 is None or v2 is None:
+        raise ValueError("Chi-square requires two variables (variable1/variable2 or rows/columns).")
+
     start = time.time()
     warnings: list[str] = []
 
-    validate_variable_exists(df, variable1)
-    validate_variable_exists(df, variable2)
-    validate_categorical(df[variable1], variable1)
-    validate_categorical(df[variable2], variable2)
+    validate_variable_exists(df, v1)
+    validate_variable_exists(df, v2)
+    validate_categorical(df[v1], v1)
+    validate_categorical(df[v2], v2)
 
     # Drop rows with missing in either variable
-    clean = df[[variable1, variable2]].dropna()
+    clean = df[[v1, v2]].dropna()
     n_dropped = len(df) - len(clean)
     if n_dropped > 0:
         warnings.append(f"{n_dropped} case(s) excluded due to missing values.")
@@ -49,7 +62,7 @@ def run_chi_square_independence(
     validate_min_n(n, 5, "chi-square test")
 
     # Contingency table
-    ct = pd.crosstab(clean[variable1], clean[variable2])
+    ct = pd.crosstab(clean[v1], clean[v2])
 
     # Test
     chi2, p_value, dof, expected = stats.chi2_contingency(ct)
@@ -84,7 +97,7 @@ def run_chi_square_independence(
     output_blocks = [
         OutputBlock(
             block_type=OutputBlockType.TABLE,
-            title=f"Crosstabulation: {variable1} * {variable2}",
+            title=f"Crosstabulation: {v1} * {v2}",
             content={
                 "columns": ["Row"] + [str(c) for c in ct.columns] + ["Total"],
                 "rows": table_rows
@@ -126,8 +139,8 @@ def run_chi_square_independence(
     from app.utils.interpretation import generate_interpretation
     res = NormalizedResult(
         analysis_type="chi_square_independence",
-        title=f"Chi-Square Test of Independence — {variable1} × {variable2}",
-        variables={"variable1": variable1, "variable2": variable2},
+        title=f"Chi-Square Test of Independence — {v1} × {v2}",
+        variables={"variable1": str(v1), "variable2": str(v2)},
         assumptions=assumptions,
         primary=PrimaryResult(
             statistic_name="χ²",
@@ -143,7 +156,7 @@ def run_chi_square_independence(
                 title="Observed Frequencies",
                 chart_type="bar",
                 data=chart_data,
-                config={"stacked": True, "xLabel": variable1, "yLabel": "Frequency"}
+                config={"stacked": True, "xLabel": str(v1), "yLabel": "Frequency"}
             )
         ],
         warnings=warnings,

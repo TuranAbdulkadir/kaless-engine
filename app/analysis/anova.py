@@ -10,15 +10,24 @@ from statsmodels.stats.multicomp import pairwise_tukeyhsd
 from app.core.preprocessing import validate_variable_exists
 from app.schemas.results import NormalizedResult
 
-def run_one_way_anova(df: pd.DataFrame, dependent: str, factor: str) -> NormalizedResult:
+def run_one_way_anova(
+    df: pd.DataFrame, 
+    dependent: str | list[str], 
+    grouping: str | list[str]
+) -> NormalizedResult:
+    """Computes One-Way ANOVA."""
     start = time.time()
     warnings: list[str] = []
 
-    validate_variable_exists(df, dependent)
-    validate_variable_exists(df, factor)
+    # Handle list inputs
+    dep_var = dependent[0] if isinstance(dependent, list) and len(dependent) > 0 else dependent
+    group_var = grouping[0] if isinstance(grouping, list) and len(grouping) > 0 else grouping
+
+    validate_variable_exists(df, dep_var)
+    validate_variable_exists(df, group_var)
 
     # Prepare data, drop missing values
-    sub_df = df[[dependent, factor]].dropna()
+    sub_df = df[[dep_var, group_var]].dropna()
     valid_n = len(sub_df)
     
     if valid_n < 3:
@@ -168,7 +177,7 @@ def run_one_way_anova(df: pd.DataFrame, dependent: str, factor: str) -> Normaliz
     res = NormalizedResult(
         analysis_type="one_way_anova",
         title="One-Way ANOVA",
-        variables={"dependent": [dependent], "factor": [factor]},
+        variables={"dependent": [str(dep_var)], "grouping": [str(group_var)]},
         descriptives=descriptives,
         output_blocks=output_blocks,
         primary=primary,

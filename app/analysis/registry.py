@@ -186,7 +186,7 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
         "display_name": "Chi-Square Test of Independence",
         "category": "Non-Parametric",
         "func": run_chi_square_independence,
-        "required": ["variable1", "variable2"],
+        "required": ["rows", "columns"],
         "required_pattern": "2 categorical variables",
         "optional": {"alpha": 0.05},
         "description": "Test association between two categorical variables.",

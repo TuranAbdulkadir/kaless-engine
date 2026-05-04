@@ -118,16 +118,21 @@ def run_descriptives(
 
 def run_frequencies(
     df: pd.DataFrame,
-    variable: str,
+    variable: str | list[str],
 ) -> NormalizedResult:
     """Compute frequency distribution for a variable."""
     start = time.time()
     warnings: list[str] = []
 
-    validate_variable_exists(df, variable)
+    # Handle list input
+    var_name = variable[0] if isinstance(variable, list) and len(variable) > 0 else variable
+    if not var_name:
+        raise ValueError("Frequencies requires a variable.")
 
-    series = df[variable].dropna()
-    n_missing = int(df[variable].isna().sum())
+    validate_variable_exists(df, var_name)
+
+    series = df[var_name].dropna()
+    n_missing = int(df[var_name].isna().sum())
     if n_missing > 0:
         warnings.append(f"{n_missing} missing value(s) excluded.")
 
@@ -208,10 +213,16 @@ def run_ratio(
     start = time.time()
     warnings: list[str] = []
 
-    if len(variables) < 2:
+    # Support nested lists if frontend sends them that way
+    flat_vars = []
+    for v in variables:
+        if isinstance(v, list): flat_vars.extend(v)
+        else: flat_vars.append(v)
+        
+    if len(flat_vars) < 2:
         raise ValueError("Ratio analysis requires exactly 2 variables (Numerator, Denominator).")
     
-    num, den = variables[0], variables[1]
+    num, den = flat_vars[0], flat_vars[1]
 
     validate_variable_exists(df, num)
     validate_variable_exists(df, den)
@@ -390,24 +401,30 @@ def run_crosstabs(
 def run_explore(
     df: pd.DataFrame,
     dependent: list[str],
-    grouping: str,
+    grouping: str | list[str],
     alpha: float = 0.05,
 ) -> NormalizedResult:
     """Detailed exploration of dependents by grouping factor."""
     start = time.time()
     warnings: list[str] = []
+    
+    # Handle list-wrapped grouping from frontend
+    group_var = grouping[0] if isinstance(grouping, list) and len(grouping) > 0 else grouping
+    if not group_var:
+        raise ValueError("Explore requires a grouping factor.")
+
     for v in dependent:
         validate_variable_exists(df, v)
         validate_numeric(df[v], v)
-    validate_variable_exists(df, grouping)
+    validate_variable_exists(df, group_var)
 
-    cleaned, n_dropped = drop_missing_listwise(df, dependent + [grouping])
+    cleaned, n_dropped = drop_missing_listwise(df, dependent + [group_var])
     if n_dropped > 0: warnings.append(f"{n_dropped} case(s) excluded.")
 
     output_blocks = []
     descriptives = []
     for dep_var in dependent:
-        groups = cleaned.groupby(grouping)[dep_var]
+        groups = cleaned.groupby(group_var)[dep_var]
         table_rows = []
         for name, group in groups:
             desc_stats = compute_descriptive(group, name=str(name))
@@ -421,14 +438,14 @@ def run_explore(
             })
         output_blocks.append(OutputBlock(
             block_type=OutputBlockType.TABLE,
-            title=f"Explore: {dep_var} by {grouping}",
+            title=f"Explore: {dep_var} by {group_var}",
             content={"columns": ["Group", "N", "Mean", "Std. Deviation", "Std. Error", "95% CI Lower", "95% CI Upper", "Min", "Max"], "rows": table_rows}
         ))
 
     res = NormalizedResult(
         analysis_type="explore",
         title="Explore Analysis",
-        variables={"dependent": dependent, "factor": grouping},
+        variables={"dependent": dependent, "factor": group_var},
         descriptives=descriptives,
         output_blocks=output_blocks,
         warnings=warnings,
