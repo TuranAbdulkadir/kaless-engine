@@ -130,7 +130,7 @@ def run_linear_regression(
             content={
                 "columns": ["Model", "R", "R Square", "Adjusted R Square", "Std. Error of the Estimate", "R Square Change", "F Change", "df1", "df2", "Sig. F Change"],
                 "rows": model_summary_rows,
-                "footnotes": [f"a. Predictors: (Constant), {', '.join(independents)}"]
+                "footnotes": [f"a. Predictors: (Constant), {', '.join(ind_vars)}"]
             }
         ),
         OutputBlock(
@@ -140,8 +140,8 @@ def run_linear_regression(
                 "columns": ["Model", "Sum of Squares", "df", "Mean Square", "F", "Sig."],
                 "rows": anova_rows,
                 "footnotes": [
-                    f"a. Dependent Variable: {dependent}",
-                    f"b. Predictors: (Constant), {', '.join(independents)}"
+                    f"a. Dependent Variable: {dep_var}",
+                    f"b. Predictors: (Constant), {', '.join(ind_vars)}"
                 ]
             }
         ),
@@ -151,7 +151,7 @@ def run_linear_regression(
             content={
                 "columns": ["Model", "B", "Std. Error", "Beta", "t", "Sig."],
                 "rows": coefficients_rows,
-                "footnotes": [f"a. Dependent Variable: {dependent}"],
+                "footnotes": [f"a. Dependent Variable: {dep_var}"],
                 "column_groups": [
                     {"label": "Unstandardized Coefficients", "columns": ["B", "Std. Error"]},
                     {"label": "Standardized Coefficients", "columns": ["Beta"]}
@@ -165,7 +165,7 @@ def run_linear_regression(
     res = NormalizedResult(
         analysis_type="linear_regression",
         title="Regression",
-        variables={"dependent": [dependent], "independent": independents},
+        variables={"dependent": [dep_var], "independent": ind_vars},
         output_blocks=output_blocks,
         warnings=warnings,
         primary={

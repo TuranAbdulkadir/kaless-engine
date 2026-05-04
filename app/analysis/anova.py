@@ -37,7 +37,7 @@ def run_one_way_anova(
         warnings.append(f"{len(df) - valid_n} case(s) excluded due to missing values.")
 
     # Group data
-    groups = sub_df.groupby(factor)[dependent]
+    groups = sub_df.groupby(group_var)[dep_var]
     group_data = [group.values for name, group in groups]
     group_names = list(groups.groups.keys())
 
@@ -48,7 +48,7 @@ def run_one_way_anova(
     f_stat, p_value = stats.f_oneway(*group_data)
 
     # Sum of Squares (Between and Within)
-    grand_mean = sub_df[dependent].mean()
+    grand_mean = sub_df[dep_var].mean()
     
     ss_between = sum(len(g) * (g.mean() - grand_mean)**2 for g in group_data)
     df_between = len(group_data) - 1
@@ -95,7 +95,7 @@ def run_one_way_anova(
             "content": {
                 "columns": ["Source", "Sum of Squares", "df", "Mean Square", "F", "Sig."],
                 "rows": anova_table,
-                "footnotes": [f"Dependent Variable: {dependent}"]
+                "footnotes": [f"Dependent Variable: {dep_var}"]
             }
         }
     ]
@@ -103,7 +103,7 @@ def run_one_way_anova(
     # Post-Hoc: Tukey HSD (if significant)
     if not np.isnan(p_value) and p_value < 0.05 and len(group_data) > 2:
         try:
-            tukey = pairwise_tukeyhsd(endog=sub_df[dependent], groups=sub_df[factor], alpha=0.05)
+            tukey = pairwise_tukeyhsd(endog=sub_df[dep_var], groups=sub_df[group_var], alpha=0.05)
             
             # The summary contains: group1, group2, meandiff, p-adj, lower, upper, reject
             res_data = tukey.summary().data
