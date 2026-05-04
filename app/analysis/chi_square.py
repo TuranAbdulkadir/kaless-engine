@@ -133,6 +133,22 @@ def run_chi_square_independence(
         for col_val in ct.columns:
             row_data[str(col_val)] = int(ct.loc[row_val, col_val])
         chart_data.append(row_data)
+        
+    chart_obj = ChartData(
+        title="Observed Frequencies",
+        chart_type="bar",
+        data=chart_data,
+        config={"stacked": True, "xLabel": str(v1), "yLabel": "Frequency"}
+    )
+    
+    # Crucial: Append chart to output blocks so the React frontend renders it!
+    output_blocks.append(
+        OutputBlock(
+            block_type=OutputBlockType.CHART,
+            title="Observed Frequencies",
+            content=chart_obj.model_dump()
+        )
+    )
 
     duration = int((time.time() - start) * 1000)
 
@@ -151,14 +167,7 @@ def run_chi_square_independence(
             significance=sig,
         ),
         output_blocks=output_blocks,
-        charts=[
-            ChartData(
-                title="Observed Frequencies",
-                chart_type="bar",
-                data=chart_data,
-                config={"stacked": True, "xLabel": str(v1), "yLabel": "Frequency"}
-            )
-        ],
+        charts=[chart_obj],
         warnings=warnings,
         metadata={
             "n_total": len(df),
