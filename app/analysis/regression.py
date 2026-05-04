@@ -38,7 +38,7 @@ def run_linear_regression(
     sub_df = df[vars_to_keep].dropna()
     valid_n = len(sub_df)
     
-    if valid_n < len(independents) + 2:
+    if valid_n < len(ind_vars) + 2:
         raise ValueError("Not enough valid cases to compute Linear Regression.")
 
     if len(sub_df) < len(df):

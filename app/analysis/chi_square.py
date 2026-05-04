@@ -164,7 +164,7 @@ def run_chi_square_independence(
             "n_total": len(df),
             "missing_excluded": n_dropped,
             "valid_n": n,
-            "cramers_v": round(float(effect), 4),
+            "cramers_v": round(float(effect.value), 4) if effect else 0.0,
             "duration_ms": duration,
             "timestamp": datetime.utcnow().isoformat(),
         },

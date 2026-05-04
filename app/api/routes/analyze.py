@@ -332,6 +332,18 @@ async def analyze_endpoint(
             # Map 'factor' → 'grouping' 
             if "grouping" not in normalized_params and "factor" in normalized_params:
                 normalized_params["grouping"] = normalized_params["factor"]
+                
+            # Special handling for explore which needs dependent and grouping
+            if request.analysis_type == "explore":
+                if "dependent" not in normalized_params and "variables" in normalized_params:
+                    vlist = normalized_params["variables"]
+                    if isinstance(vlist, list) and len(vlist) >= 2:
+                        # Frontend sends dependent(s) as a comma separated string in the first array item
+                        deps = vlist[0].split(",") if isinstance(vlist[0], str) else vlist[0]
+                        normalized_params["dependent"] = deps if isinstance(deps, list) else [deps]
+                        if "grouping" not in normalized_params:
+                            normalized_params["grouping"] = vlist[1]
+
             
             result = dispatch_analysis(
                 analysis_type=request.analysis_type,
