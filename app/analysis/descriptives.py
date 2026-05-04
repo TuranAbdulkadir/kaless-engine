@@ -106,6 +106,13 @@ def run_descriptives(
         },
     )
     res.interpretation = generate_interpretation(res)
+    # Add charts to output blocks for rendering
+    for chart in res.charts:
+        res.output_blocks.append(OutputBlock(
+            block_type=OutputBlockType.CHART,
+            title=chart.config.get("title", "Chart"),
+            content=chart.dict()
+        ))
     return res
 
 
@@ -183,6 +190,13 @@ def run_frequencies(
         },
     )
     res.interpretation = generate_interpretation(res)
+    # Add charts to output blocks
+    for chart in res.charts:
+        res.output_blocks.append(OutputBlock(
+            block_type=OutputBlockType.CHART,
+            title=chart.config.get("title", "Frequency Chart"),
+            content=chart.dict()
+        ))
     return res
 
 
@@ -303,6 +317,13 @@ def run_pp_plots(
         ],
         metadata={"library": "scipy.stats", "timestamp": datetime.utcnow().isoformat()}
     )
+    # Add charts to output blocks for rendering
+    for chart in charts:
+        res.output_blocks.append(OutputBlock(
+            block_type=OutputBlockType.CHART,
+            title=chart.config.get("title", "P-P Plot"),
+            content=chart.dict()
+        ))
     res.interpretation = generate_interpretation(res)
     return res
 
@@ -340,6 +361,13 @@ def run_qq_plots(
         ],
         metadata={"library": "scipy.stats", "timestamp": datetime.utcnow().isoformat()}
     )
+    # Add charts to output blocks for rendering
+    for chart in charts:
+        res.output_blocks.append(OutputBlock(
+            block_type=OutputBlockType.CHART,
+            title=chart.config.get("title", "Q-Q Plot"),
+            content=chart.dict()
+        ))
     res.interpretation = generate_interpretation(res)
     return res
 
