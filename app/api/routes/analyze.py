@@ -129,30 +129,80 @@ async def analyze_endpoint(
             from app.analysis.frequencies import run_frequencies
             if not request.params or "variables" not in request.params:
                 raise ValueError("Missing 'variables' in params for frequencies.")
-            # Take the first variable from the list
             variable = request.params["variables"][0] if isinstance(request.params["variables"], list) else request.params["variables"]
             result = run_frequencies(df, variable)
+        elif request.analysis_type in ["codebook", "case_summaries", "report_rows", "report_cols"]:
+            from app.analysis.reports import run_codebook, run_case_summaries, run_report_summaries
+            variables = request.params.get("variables", [])
+            if request.analysis_type == "codebook":
+                result = run_codebook(df, variables)
+            elif request.analysis_type == "case_summaries":
+                grouping = request.params.get("grouping")
+                result = run_case_summaries(df, variables, grouping)
+            elif request.analysis_type == "report_rows":
+                result = run_report_summaries(df, variables, orient="rows")
+            elif request.analysis_type == "report_cols":
+                result = run_report_summaries(df, variables, orient="columns")
+        elif request.analysis_type == "olap_cubes":
+            from app.analysis.reports import run_olap_cubes
+            variables = request.params.get("variables", [])
+            # Frontend doesn't distinguish summary vs grouping naturally if sent as one list
+            # But if it's sent as two lists:
+            summary = request.params.get("summary_vars")
+            grouping = request.params.get("grouping_vars")
+            if not summary and not grouping and len(variables) >= 2:
+                # heuristic: last variable is grouping, rest is summary
+                summary = variables[:-1]
+                grouping = [variables[-1]]
+            result = run_olap_cubes(df, summary, grouping)
+        elif request.analysis_type == "custom_tables":
+            from app.analysis.reports import run_custom_tables
+            rows = request.params.get("rows_vars", request.params.get("variables", []))
+            cols = request.params.get("cols_vars")
+            result = run_custom_tables(df, rows, cols)
+        elif request.analysis_type == "crosstabs":
+            from app.analysis.chi_square import run_chi_square_independence
+            rows = request.params.get("rows", [])
+            cols = request.params.get("columns", [])
+            if not rows or not cols:
+                # fallback if frontend sent variables list
+                variables = request.params.get("variables", [])
+                if len(variables) >= 2:
+                    rows = [variables[0]]
+                    cols = [variables[1]]
+                else:
+                    raise ValueError("Crosstabs requires at least one row and one column variable.")
+            result = run_chi_square_independence(df, rows[0], cols[0])
+        elif request.analysis_type == "explore":
+            from app.analysis.descriptives import run_explore
+            dependent = request.params.get("dependent", request.params.get("variables", []))
+            grouping = request.params.get("grouping")
+            if not dependent:
+                raise ValueError("Explore requires dependent variables.")
+            result = run_explore(df, dependent, grouping)
+        elif request.analysis_type == "qq_plots":
+            from app.analysis.descriptives import run_qq_plots
+            variables = request.params.get("variables", [])
+            result = run_qq_plots(df, variables)
         elif request.analysis_type == "independent_t":
             from app.analysis.ttest import calculate_independent_t
-            # Resolve test_variable: could be in test_variable, or variables[0]
-            test_var = request.params.get("test_variable")
-            group_var = request.params.get("grouping_variable")
+            if not request.params or "test_variable" not in request.params or "grouping_variable" not in request.params:
+                # Handle frontend format which sends { variables: [test_var, group_var] }
+                if "variables" in request.params and len(request.params["variables"]) >= 2:
+                    test_var = request.params["variables"][0]
+                    group_var = request.params["variables"][1]
+                else:
+                    raise ValueError("Missing 'test_variable' and 'grouping_variable' in params.")
+            else:
+                test_var = request.params["test_variable"]
+                group_var = request.params["grouping_variable"]
             
-            if not test_var and "variables" in request.params:
-                vlist = request.params["variables"]
-                if isinstance(vlist, list) and len(vlist) >= 1:
-                    test_var = vlist[0]
-                    if not group_var and len(vlist) >= 2:
-                        group_var = vlist[1]
-            
-            if not test_var or not group_var:
-                raise ValueError("Independent T-Test requires a test variable and a grouping variable.")
-            
-            # Resolve group values (frontend sends group1/group2 or group1_val/group2_val)
-            group1_val = request.params.get("group1") or request.params.get("group1_val")
-            group2_val = request.params.get("group2") or request.params.get("group2_val")
-            
-            if not group1_val or not group2_val:
+            # Use explicitly provided group values from the frontend Define Groups dialog
+            if "group1_val" in request.params and "group2_val" in request.params:
+                group1_val = request.params["group1_val"]
+                group2_val = request.params["group2_val"]
+            else:
+                # Fallback to distinct values if not explicitly provided
                 unique_vals = df[group_var].dropna().unique().tolist()
                 if len(unique_vals) < 2:
                     raise ValueError(f"Grouping variable '{group_var}' must have at least 2 distinct values.")
@@ -181,36 +231,21 @@ async def analyze_endpoint(
             )
         elif request.analysis_type == "linear_regression":
             from app.analysis.regression import run_linear_regression
-            # Frontend dedicated dialog sends: variables = [dv, iv1, iv2, ...]
-            dep = request.params.get("dependent")
-            ind_vars = request.params.get("independent") or request.params.get("independents")
-            
-            if not dep and "variables" in request.params:
-                vlist = request.params["variables"]
-                if isinstance(vlist, list) and len(vlist) >= 2:
-                    dep = vlist[0]
-                    ind_vars = vlist[1:]
-            
-            if not dep or not ind_vars:
-                raise ValueError("Linear Regression requires a dependent variable and at least one independent variable.")
-            
-            result = run_linear_regression(df, dep, ind_vars)
+            if not request.params or "dependent" not in request.params or "variables" not in request.params:
+                raise ValueError("Missing 'dependent' or 'variables' (independents) in params for linear regression.")
+            result = run_linear_regression(df, request.params["dependent"], request.params["variables"])
         elif request.analysis_type == "one_way_anova":
             from app.analysis.anova import run_one_way_anova
-            # Resolve dependent and grouping from multiple possible frontend formats
-            dep = request.params.get("dependent")
-            fac = request.params.get("factor") or request.params.get("grouping") or request.params.get("grouping_variable")
-            
-            if not dep and "variables" in request.params:
-                vlist = request.params["variables"]
-                if isinstance(vlist, list) and len(vlist) >= 1:
-                    dep = vlist[0]
-                    if not fac and len(vlist) >= 2:
-                        fac = vlist[1]
-            
-            if not dep or not fac:
-                raise ValueError("One-Way ANOVA requires a dependent variable and a factor/grouping variable.")
-            
+            if not request.params or "dependent" not in request.params or "factor" not in request.params:
+                # Fallback to variable array like T-Test
+                if "variables" in request.params and len(request.params["variables"]) >= 2:
+                    dep = request.params["variables"][0]
+                    fac = request.params["variables"][1]
+                else:
+                    raise ValueError("Missing 'dependent' and 'factor' in params for One-Way ANOVA.")
+            else:
+                dep = request.params["dependent"]
+                fac = request.params["factor"]
             result = run_one_way_anova(df, dep, fac)
         elif request.analysis_type == "nonparametric":
             from app.analysis.nonparametric import run_nonparametric
@@ -285,7 +320,7 @@ async def analyze_endpoint(
                 df,
                 variables=request.params.get("variables", [])
             )
-        elif request.analysis_type == "multiple_response":
+        elif request.analysis_type in ["multiple_response", "multiple_response_sets"]:
             from app.analysis.multiple_response import run_multiple_response
             if not request.params or "variables" not in request.params:
                 raise ValueError("Multiple Response requires 'variables'.")
@@ -304,6 +339,54 @@ async def analyze_endpoint(
                 date_var=request.params["date_var"],
                 monetary_var=request.params["monetary_var"]
             )
+        elif request.analysis_type == "means":
+            from app.analysis.compare_means import run_means
+            dependent = request.params.get("dependent", [])
+            independent = request.params.get("independent", request.params.get("factors", []))
+            if not dependent and "variables" in request.params and len(request.params["variables"]) >= 2:
+                dependent = [request.params["variables"][0]]
+                independent = request.params["variables"][1:]
+            result = run_means(df, dependent, independent)
+        elif request.analysis_type == "glm_multivariate":
+            from app.analysis.glm import run_glm_multivariate
+            dependent = request.params.get("dependent", [])
+            fixed_factors = request.params.get("fixed_factors", request.params.get("factors", []))
+            covariates = request.params.get("covariates", [])
+            if not dependent and "variables" in request.params and len(request.params["variables"]) >= 3:
+                dependent = request.params["variables"][:2]
+                fixed_factors = request.params["variables"][2:]
+            result = run_glm_multivariate(df, dependent, fixed_factors, covariates)
+        elif request.analysis_type == "glm_repeated":
+            from app.analysis.glm import run_glm_repeated
+            within_subjects = request.params.get("within_subjects", request.params.get("variables", []))
+            between_subjects = request.params.get("between_subjects", [])
+            result = run_glm_repeated(df, within_subjects, between_subjects)
+        elif request.analysis_type == "glm_variance":
+            from app.analysis.glm import run_glm_variance
+            dependent = request.params.get("dependent")
+            random_factors = request.params.get("random_factors", request.params.get("factors", []))
+            if not dependent and "variables" in request.params and len(request.params["variables"]) >= 2:
+                dependent = request.params["variables"][0]
+                random_factors = request.params["variables"][1:]
+            result = run_glm_variance(df, dependent, random_factors)
+        elif request.analysis_type == "genlin":
+            from app.analysis.genlin import run_genlin
+            dependent = request.params.get("dependent")
+            predictors = request.params.get("predictors", request.params.get("covariates", request.params.get("factors", [])))
+            if not dependent and "variables" in request.params and len(request.params["variables"]) >= 2:
+                dependent = request.params["variables"][0]
+                predictors = request.params["variables"][1:]
+            result = run_genlin(df, dependent, predictors, request.params.get("family", "gaussian"))
+        elif request.analysis_type == "gee":
+            from app.analysis.genlin import run_gee
+            dependent = request.params.get("dependent")
+            subject = request.params.get("subject")
+            predictors = request.params.get("predictors", request.params.get("factors", []))
+            if not dependent and "variables" in request.params and len(request.params["variables"]) >= 3:
+                dependent = request.params["variables"][0]
+                subject = request.params["variables"][1]
+                predictors = request.params["variables"][2:]
+            result = run_gee(df, dependent, predictors, subject, request.params.get("family", "gaussian"))
         elif request.analysis_type == "mixed_models":
             from app.analysis.mixed_models import run_mixed_model
             if not request.params or "dependent" not in request.params or "fixed_factors" not in request.params or "random_factor" not in request.params:
@@ -314,41 +397,61 @@ async def analyze_endpoint(
                 fixed_factors=request.params["fixed_factors"],
                 random_factor=request.params["random_factor"]
             )
+        elif request.analysis_type == "mixed_genlin":
+            from app.analysis.mixed_models import run_mixed_genlin
+            dependent = request.params.get("dependent")
+            random_factor = request.params.get("random_factor", request.params.get("subject"))
+            fixed_factors = request.params.get("fixed_factors", request.params.get("factors", []))
+            if not dependent and "variables" in request.params and len(request.params["variables"]) >= 3:
+                dependent = request.params["variables"][0]
+                random_factor = request.params["variables"][1]
+                fixed_factors = request.params["variables"][2:]
+            result = run_mixed_genlin(df, dependent, fixed_factors, random_factor, request.params.get("family", "binomial"))
+        elif request.analysis_type == "discriminant":
+            from app.analysis.classify_advanced import run_discriminant
+            variables = request.params.get("variables", [])
+            grouping = request.params.get("grouping_variable", request.params.get("grouping"))
+            if not grouping and len(variables) >= 2:
+                grouping = variables[-1]
+                variables = variables[:-1]
+            if not grouping:
+                raise ValueError("Discriminant Analysis requires a grouping variable.")
+            result = run_discriminant(df, variables, grouping)
+        elif request.analysis_type == "hierarchical_cluster":
+            from app.analysis.classify_advanced import run_hierarchical_cluster
+            variables = request.params.get("variables", [])
+            if not variables or len(variables) < 1:
+                raise ValueError("Hierarchical Cluster requires at least 1 variable.")
+            result = run_hierarchical_cluster(
+                df, variables,
+                n_clusters=int(request.params.get("n_clusters", 3)),
+                linkage=request.params.get("linkage", "ward"),
+            )
+        elif request.analysis_type == "nearest_neighbor":
+            from app.analysis.classify_advanced import run_nearest_neighbor
+            variables = request.params.get("variables", [])
+            grouping = request.params.get("grouping_variable", request.params.get("grouping"))
+            if not grouping and len(variables) >= 2:
+                grouping = variables[-1]
+                variables = variables[:-1]
+            if not grouping:
+                raise ValueError("Nearest Neighbor requires a grouping variable.")
+            result = run_nearest_neighbor(df, variables, grouping, k=int(request.params.get("k", 5)))
+        elif request.analysis_type == "decision_tree":
+            from app.analysis.classify_advanced import run_decision_tree
+            variables = request.params.get("variables", [])
+            grouping = request.params.get("grouping_variable", request.params.get("grouping"))
+            if not grouping and len(variables) >= 2:
+                grouping = variables[-1]
+                variables = variables[:-1]
+            if not grouping:
+                raise ValueError("Decision Tree requires a grouping variable.")
+            result = run_decision_tree(df, variables, grouping)
         else:
-            # ═══ UNIVERSAL PARAMS NORMALIZER ═══
-            # Maps frontend parameter names to what the registry expects
-            normalized_params = dict(request.params) if request.params else {}
-            
-            # Map 'variables' (plural) → 'variable' (singular) for single-variable analyses
-            if "variable" not in normalized_params and "variables" in normalized_params:
-                vlist = normalized_params["variables"]
-                if isinstance(vlist, list) and len(vlist) >= 1:
-                    normalized_params["variable"] = vlist[0]
-            
-            # Map 'grouping_variable' → 'grouping' for explore/anova
-            if "grouping" not in normalized_params and "grouping_variable" in normalized_params:
-                normalized_params["grouping"] = normalized_params["grouping_variable"]
-            
-            # Map 'factor' → 'grouping' 
-            if "grouping" not in normalized_params and "factor" in normalized_params:
-                normalized_params["grouping"] = normalized_params["factor"]
-                
-            # Special handling for explore which needs dependent and grouping
-            if request.analysis_type == "explore":
-                if "dependent" not in normalized_params and "variables" in normalized_params:
-                    vlist = normalized_params["variables"]
-                    if isinstance(vlist, list) and len(vlist) >= 2:
-                        # Frontend sends dependent(s) as a comma separated string in the first array item
-                        deps = vlist[0].split(",") if isinstance(vlist[0], str) else vlist[0]
-                        normalized_params["dependent"] = deps if isinstance(deps, list) else [deps]
-                        if "grouping" not in normalized_params:
-                            normalized_params["grouping"] = vlist[1]
-
-            
             result = dispatch_analysis(
                 analysis_type=request.analysis_type,
                 df=df,
-                params=normalized_params,
+                params=request.params,
             )
 
         return AnalyzeResponse(

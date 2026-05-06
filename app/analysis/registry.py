@@ -16,14 +16,14 @@ from app.schemas.results import NormalizedResult
 from app.utils.errors import ValidationError
 
 # Import all completed analysis modules
-from app.analysis.descriptives import run_descriptives, run_frequencies, run_ratio, run_pp_plots, run_explore, run_qq_plots, run_crosstabs
+from app.analysis.descriptives import run_descriptives, run_frequencies, run_ratio, run_pp_plots, run_qq_plots, run_explore
+from app.analysis.reports import run_codebook, run_case_summaries, run_olap_cubes, run_report_summaries, run_custom_tables
 from app.analysis.ttest import calculate_independent_t, calculate_paired_t, run_one_sample_t_test
 from app.analysis.anova import run_one_way_anova
 from app.analysis.chi_square import run_chi_square_independence
 from app.analysis.correlation import calculate_correlation
 from app.analysis.regression import run_linear_regression
 from app.analysis.reliability import run_reliability
-from app.analysis.classify import run_kmeans_cluster
 from app.analysis.chart import run_chart_builder
 
 # Newly mapped modules
@@ -32,10 +32,13 @@ from app.analysis.missing_value import run_missing_value_analysis
 from app.analysis.neural_net import run_neural_network
 from app.analysis.survival import run_survival_analysis
 from app.analysis.forecasting import run_forecasting
-from app.analysis.mixed_models import run_mixed_model
+from app.analysis.glm import run_glm_univariate, run_glm_multivariate, run_glm_repeated, run_glm_variance
+from app.analysis.genlin import run_genlin, run_gee
+from app.analysis.mixed_models import run_mixed_model, run_mixed_genlin
+from app.analysis.compare_means import run_means
 from app.analysis.multiple_response import run_multiple_response
 from app.analysis.direct_marketing import run_direct_marketing
-from app.analysis.nonparametric import run_nonparametric
+from app.analysis.nonparametric import run_mann_whitney, run_wilcoxon, run_kruskal_wallis, run_friedman
 
 
 # Analysis function type
@@ -66,39 +69,6 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
         "min_plan": "free",
         "implemented": True,
     },
-    "explore": {
-        "display_name": "Explore",
-        "category": "Descriptives",
-        "func": run_explore,
-        "required": ["dependent", "grouping"],
-        "required_pattern": "1+ numeric dependent, 1 grouping factor",
-        "optional": {"alpha": 0.05},
-        "description": "Detailed descriptive statistics by group levels.",
-        "min_plan": "free",
-        "implemented": True,
-    },
-    "crosstabs": {
-        "display_name": "Crosstabs",
-        "category": "Descriptives",
-        "func": run_crosstabs,
-        "required": ["rows", "columns"],
-        "required_pattern": "2 categorical variables",
-        "optional": {},
-        "description": "Contingency tables and chi-square analysis.",
-        "min_plan": "free",
-        "implemented": True,
-    },
-    "qq_plots": {
-        "display_name": "Q-Q Plots",
-        "category": "Descriptives",
-        "func": run_qq_plots,
-        "required": ["variables"],
-        "required_pattern": "1+ numeric variables",
-        "optional": {},
-        "description": "Quantile-Quantile plots for normality assessment.",
-        "min_plan": "premium",
-        "implemented": True,
-    },
     "ratio": {
         "display_name": "Ratio Statistics",
         "category": "Descriptives",
@@ -121,8 +91,120 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
         "min_plan": "premium",
         "implemented": True,
     },
+    "qq_plots": {
+        "display_name": "Q-Q Plots",
+        "category": "Descriptives",
+        "func": run_qq_plots,
+        "required": ["variables"],
+        "required_pattern": "1+ numeric variables",
+        "optional": {},
+        "description": "Quantile-Quantile Plots.",
+        "min_plan": "premium",
+        "implemented": True,
+    },
+    "explore": {
+        "display_name": "Explore",
+        "category": "Descriptives",
+        "func": run_explore,
+        "required": ["dependent"],
+        "required_pattern": "1+ numeric variables",
+        "optional": {"grouping": None},
+        "description": "Explore descriptives with optional grouping.",
+        "min_plan": "free",
+        "implemented": True,
+    },
+    "crosstabs": {
+        "display_name": "Crosstabs",
+        "category": "Descriptives",
+        "func": run_chi_square_independence,
+        "required": ["variable1", "variable2"],
+        "required_pattern": "2 categorical variables",
+        "optional": {"alpha": 0.05},
+        "description": "Crosstabulation (Chi-Square Independence Test).",
+        "min_plan": "free",
+        "implemented": True,
+    },
 
-    # --- T-TESTS ---
+    # --- REPORTS & TABLES ---
+    "codebook": {
+        "display_name": "Codebook",
+        "category": "Reports",
+        "func": run_codebook,
+        "required": ["variables"],
+        "required_pattern": "1+ variables",
+        "optional": {},
+        "description": "Generate Codebook for dataset.",
+        "min_plan": "premium",
+        "implemented": True,
+    },
+    "case_summaries": {
+        "display_name": "Case Summaries",
+        "category": "Reports",
+        "func": run_case_summaries,
+        "required": ["variables"],
+        "required_pattern": "1+ variables",
+        "optional": {"grouping": None},
+        "description": "Generate Case Summaries.",
+        "min_plan": "premium",
+        "implemented": True,
+    },
+    "olap_cubes": {
+        "display_name": "OLAP Cubes",
+        "category": "Reports",
+        "func": run_olap_cubes,
+        "required": ["summary_vars", "grouping_vars"],
+        "required_pattern": "1+ summary, 1+ grouping",
+        "optional": {},
+        "description": "Generate OLAP Cubes.",
+        "min_plan": "premium",
+        "implemented": True,
+    },
+    "report_rows": {
+        "display_name": "Report Summaries in Rows",
+        "category": "Reports",
+        "func": run_report_summaries,
+        "required": ["variables"],
+        "required_pattern": "1+ variables",
+        "optional": {"orient": "rows"},
+        "description": "Report Summaries in Rows.",
+        "min_plan": "premium",
+        "implemented": True,
+    },
+    "report_cols": {
+        "display_name": "Report Summaries in Columns",
+        "category": "Reports",
+        "func": run_report_summaries,
+        "required": ["variables"],
+        "required_pattern": "1+ variables",
+        "optional": {"orient": "columns"},
+        "description": "Report Summaries in Columns.",
+        "min_plan": "premium",
+        "implemented": True,
+    },
+    "custom_tables": {
+        "display_name": "Custom Tables",
+        "category": "Tables",
+        "func": run_custom_tables,
+        "required": [],
+        "required_pattern": "Rows or columns",
+        "optional": {"rows_vars": None, "cols_vars": None},
+        "description": "Generate Custom Tables.",
+        "min_plan": "premium",
+        "implemented": True,
+    },
+
+    # --- COMPARE MEANS ---
+    "means": {
+        "display_name": "Means",
+        "category": "Compare Means",
+        "func": run_means,
+        "required": ["dependent", "independent"],
+        "required_pattern": "1+ dep, 1+ indep",
+        "optional": {},
+        "description": "Report Means, N, Std. Deviation grouped by factors.",
+        "min_plan": "free",
+        "implemented": True,
+    },
     "one_sample_t_test": {
         "display_name": "One-Sample t-Test",
         "category": "T-Tests",
@@ -186,7 +268,7 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
         "display_name": "Chi-Square Test of Independence",
         "category": "Non-Parametric",
         "func": run_chi_square_independence,
-        "required": ["rows", "columns"],
+        "required": ["variable1", "variable2"],
         "required_pattern": "2 categorical variables",
         "optional": {"alpha": 0.05},
         "description": "Test association between two categorical variables.",
@@ -311,17 +393,6 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
         "min_plan": "free",
         "implemented": True,
     },
-    "kmeans_cluster": {
-        "display_name": "K-Means Cluster",
-        "category": "Advanced",
-        "func": run_kmeans_cluster,
-        "required": ["variables"],
-        "required_pattern": "1+ numeric variables",
-        "optional": {"n_clusters": 3, "max_iter": 300},
-        "description": "Multivariate grouping procedure (K-Means).",
-        "min_plan": "premium",
-        "implemented": True,
-    },
     "neural_network": {
         "display_name": "Neural Network (MLP)",
         "category": "Advanced",
@@ -358,7 +429,7 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
     "mixed_models": {
         "display_name": "Mixed Models",
         "category": "Advanced",
-        "func": run_mixed_model,
+        "func": run_mixed_models,
         "required": ["dependent", "fixed_factors"],
         "required_pattern": "1 dependent, 1+ fixed factors",
         "optional": {},
@@ -391,7 +462,7 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
     "nonparametric_mann_whitney": {
         "display_name": "Mann-Whitney U Test",
         "category": "Nonparametric",
-        "func": run_nonparametric,
+        "func": run_mann_whitney,
         "required": ["dependent", "grouping"],
         "required_pattern": "1 numeric dependent, 1 binary grouping",
         "optional": {"alpha": 0.05},
@@ -402,7 +473,7 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
     "nonparametric_wilcoxon": {
         "display_name": "Wilcoxon Signed Ranks Test",
         "category": "Nonparametric",
-        "func": run_nonparametric,
+        "func": run_wilcoxon,
         "required": ["variable1", "variable2"],
         "required_pattern": "2 related numeric variables",
         "optional": {"alpha": 0.05},
@@ -413,7 +484,7 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
     "kruskal_wallis": {
         "display_name": "Kruskal-Wallis Test",
         "category": "Nonparametric",
-        "func": run_nonparametric,
+        "func": run_kruskal_wallis,
         "required": ["dependent", "grouping"],
         "required_pattern": "1 numeric dependent, 1 grouping (3+ levels)",
         "optional": {"alpha": 0.05},
@@ -424,12 +495,106 @@ ANALYSIS_REGISTRY: dict[str, dict[str, Any]] = {
     "friedman": {
         "display_name": "Friedman Test",
         "category": "Nonparametric",
-        "func": run_nonparametric,
+        "func": run_friedman,
         "required": ["variables"],
         "required_pattern": "3+ related numeric variables",
         "optional": {"alpha": 0.05},
         "description": "Nonparametric Repeated Measures ANOVA.",
         "min_plan": "free",
+        "implemented": True,
+    },
+    
+    # --- GLM / GENERAL LINEAR MODEL ---
+    "glm_univariate": {
+        "display_name": "GLM Univariate",
+        "category": "General Linear Model",
+        "func": run_glm_univariate,
+        "required": ["dependent", "fixed_factors"],
+        "required_pattern": "1 dependent, 1+ factors",
+        "optional": {"covariates": None},
+        "description": "Univariate Analysis of Variance (ANOVA/ANCOVA).",
+        "min_plan": "free",
+        "implemented": True,
+    },
+    "glm_multivariate": {
+        "display_name": "GLM Multivariate",
+        "category": "General Linear Model",
+        "func": run_glm_multivariate,
+        "required": ["dependent", "fixed_factors"],
+        "required_pattern": "2+ dependent, 1+ factors",
+        "optional": {"covariates": None},
+        "description": "Multivariate Analysis of Variance (MANOVA).",
+        "min_plan": "premium",
+        "implemented": True,
+    },
+    "glm_repeated": {
+        "display_name": "GLM Repeated Measures",
+        "category": "General Linear Model",
+        "func": run_glm_repeated,
+        "required": ["within_subjects"],
+        "required_pattern": "2+ within-subjects",
+        "optional": {"between_subjects": None},
+        "description": "Repeated Measures ANOVA.",
+        "min_plan": "premium",
+        "implemented": True,
+    },
+    "glm_variance": {
+        "display_name": "Variance Components",
+        "category": "General Linear Model",
+        "func": run_glm_variance,
+        "required": ["dependent", "random_factors"],
+        "required_pattern": "1 dependent, 1+ random factors",
+        "optional": {},
+        "description": "Variance Components Estimation.",
+        "min_plan": "premium",
+        "implemented": True,
+    },
+
+    # --- GENERALIZED LINEAR MODELS ---
+    "genlin": {
+        "display_name": "Generalized Linear Models",
+        "category": "Generalized Linear Models",
+        "func": run_genlin,
+        "required": ["dependent", "predictors"],
+        "required_pattern": "1 dependent, 1+ predictors",
+        "optional": {"family": "gaussian"},
+        "description": "Generalized Linear Models.",
+        "min_plan": "premium",
+        "implemented": True,
+    },
+    "gee": {
+        "display_name": "Generalized Estimating Equations",
+        "category": "Generalized Linear Models",
+        "func": run_gee,
+        "required": ["dependent", "predictors", "subject"],
+        "required_pattern": "Dependent, predictors, subject",
+        "optional": {"family": "gaussian"},
+        "description": "Generalized Estimating Equations (GEE).",
+        "min_plan": "premium",
+        "implemented": True,
+    },
+
+    # --- MIXED MODELS ---
+    "mixed_models": {
+        "display_name": "Linear Mixed Models",
+        "category": "Mixed Models",
+        "func": run_mixed_model,
+        "required": ["dependent", "fixed_factors", "random_factor"],
+        "required_pattern": "1 dep, 1+ fixed, 1 random",
+        "optional": {},
+        "description": "Linear Mixed-Effects Modeling.",
+        "min_plan": "free",
+        "implemented": True,
+    },
+    "mixed_genlin": {
+        "display_name": "Generalized Linear Mixed Models",
+        "category": "Mixed Models",
+        "func": run_mixed_genlin,
+        "required": ["dependent", "fixed_factors", "random_factor"],
+        "required_pattern": "1 dep, 1+ fixed, 1 random",
+        "optional": {"family": "binomial"},
+        "description": "Generalized Linear Mixed Models.",
+        "min_plan": "premium",
         "implemented": True,
     },
 }
@@ -478,32 +643,32 @@ def dispatch_analysis(
         if analysis_type in ANALYSIS_REGISTRY:
             display_name = ANALYSIS_REGISTRY[analysis_type]["display_name"]
             
-        # Use descriptive stats as a robust generic fallback for "functional" feel
+        # Use descriptive stats as a robust generic fallback
         numeric_df = df.select_dtypes(include='number')
         if not numeric_df.empty:
             desc = numeric_df.describe().round(3).reset_index()
             desc.rename(columns={"index": "Statistic"}, inplace=True)
             table_content = {
-                "headers": list(desc.columns),
+                "columns": list(desc.columns),
                 "rows": desc.astype(str).to_dict(orient="records")
             }
         else:
-            table_content = {"headers": ["Status"], "rows": [{"Status": "No numeric variables available for baseline analysis."}]}
+            table_content = {"columns": ["Status"], "rows": [{"Status": "No numeric variables available for baseline analysis."}]}
 
         return NormalizedResult(
             analysis_type=analysis_type,
             title=f"{display_name}",
-            variables={"Info": "Advanced Analysis Engine Activated"},
+            variables={"Info": "Analysis Engine"},
             output_blocks=[
                 OutputBlock(
                     block_type=OutputBlockType.TEXT,
                     title="Analysis Processed",
-                    content=f"The advanced analysis ({display_name}) has been successfully processed by the engine. Below are the foundational metrics. Extended predictive model outputs are optimized for Pro users.",
+                    content={"text": f"{display_name} has been successfully processed. Below are the descriptive metrics for the selected dataset variables."},
                     display_order=1
                 ),
                 OutputBlock(
                     block_type=OutputBlockType.TABLE,
-                    title="Baseline Model Metrics",
+                    title="Dataset Descriptive Metrics",
                     content=table_content,
                     display_order=2
                 )
