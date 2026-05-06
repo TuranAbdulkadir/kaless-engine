@@ -1,12 +1,11 @@
 """KALESS Engine — Docx Generator.
 
-Produces professional, high-fidelity APA 7 formatted academic reports using python-docx.
+Produces formal academic reports using python-docx and Matplotlib for charts.
 """
 import io
 import os
-from datetime import datetime
 from docx import Document
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Inches, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
@@ -14,7 +13,7 @@ from docx.oxml import OxmlElement
 from app.export.pdf_generator import _generate_matplotlib_chart
 
 def set_cell_border(cell, **kwargs):
-    """Set cell borders in python-docx table for strict APA horizontal line compliance."""
+    """Set cell borders in python-docx table."""
     tc = cell._tc
     tcPr = tc.get_or_add_tcPr()
     tcBorders = OxmlElement('w:tcBorders')
@@ -29,141 +28,70 @@ def set_cell_border(cell, **kwargs):
             tcBorders.append(element)
     tcPr.append(tcBorders)
 
-def clear_cell_borders(cell):
-    """Remove all borders from a cell (APA tables only have horizontal lines)."""
-    tc = cell._tc
-    tcPr = tc.get_or_add_tcPr()
-    tcBorders = OxmlElement('w:tcBorders')
-    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
-        element = OxmlElement('w:{}'.format(edge))
-        element.set(qn('w:val'), 'nil')
-        tcBorders.append(element)
-    tcPr.append(tcBorders)
-
 def generate_docx(result: dict) -> bytes:
-    """Generate a premium APA 7 formatted Docx report from statistical results."""
+    """Generate an APA-formatted Docx from a NormalizedResult dictionary."""
     doc = Document()
     
-    # 1. Global Document Styling (APA 7: Times New Roman 12pt, Double Spaced)
-    meta = result.get("metadata", {})
-    font_fam = meta.get("font_family", "serif")
-    spacing = meta.get("line_spacing", "double")
-    
+    # Define styles
     style = doc.styles['Normal']
     font = style.font
-    font.name = 'Times New Roman' if font_fam == "serif" else "Arial"
+    font.name = 'Times New Roman'
     font.size = Pt(12)
-    style.paragraph_format.line_spacing = 2.0 if spacing == "double" else 1.15
-    style.paragraph_format.space_after = Pt(0)
     
-    # 2. Cover Section (Centered Title)
-    title_p = doc.add_paragraph()
-    title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    title_run = title_p.add_run(result.get('title', 'Statistical Analysis Report').upper())
-    title_run.bold = True
-    title_run.font.size = Pt(14)
-    if font_fam == "sans-serif":
-        title_run.font.name = "Arial"
+    # 1. Title
+    title = doc.add_heading('KALESS Statistics Report', 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     
-    doc.add_paragraph() # Spacer
+    doc.add_paragraph(f"Analysis: {result.get('title', 'Statistical Analysis')}").bold = True
     
-    # Analysis Summary
-    summary_p = doc.add_paragraph()
-    summary_p.add_run("Kaless Analysis Engine Output").bold = True
+    var_str = ", ".join([f"{k}: {v}" for k, v in result.get("variables", {}).items()])
+    doc.add_paragraph(f"Variables: {var_str}")
     
-    timestamp = result.get("metadata", {}).get("timestamp", datetime.now().isoformat())
-    try:
-        dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-        date_str = dt.strftime("%B %d, %Y")
-    except:
-        date_str = timestamp
-        
-    doc.add_paragraph(f"Date: {date_str}")
-    
-    # 3. Iterate Output Blocks
+    # 2. Iterate Output Blocks
     blocks = result.get("output_blocks", [])
-    table_counter = 1
     
     for block in blocks:
         b_type = block.get("block_type")
-        b_title = block.get("title", "Statistical Output")
+        b_title = block.get("title", "")
         content = block.get("content", {})
         
         if b_type == "table":
+            doc.add_heading(b_title, level=2)
+            
             columns = content.get("columns", [])
             rows = content.get("rows", [])
             
             if not columns or not rows:
-                p = doc.add_paragraph()
-                p.add_run(f"Note. No data available for {b_title}.").italic = True
                 continue
-            
-            # --- APA 7 Table Label ---
-            label_p = doc.add_paragraph()
-            label_p.paragraph_format.line_spacing = 1.0
-            label_run = label_p.add_run(f"Table {table_counter}")
-            label_run.bold = True
-            
-            # --- APA 7 Table Title ---
-            title_p = doc.add_paragraph()
-            title_p.paragraph_format.line_spacing = 1.0
-            title_run = title_p.add_run(b_title)
-            title_run.italic = True
-            
+                
             table = doc.add_table(rows=len(rows) + 1, cols=len(columns))
-            table.style = 'Table Grid' # Base style
+            table.style = 'Normal Table'
             table.autofit = True
             
-            # Remove all default borders first
-            for r in table.rows:
-                for c in r.cells:
-                    clear_cell_borders(c)
-            
-            # Header Formatting
+            # Header
             hdr_cells = table.rows[0].cells
             for idx, col in enumerate(columns):
                 hdr_cells[idx].text = str(col)
-                # Bold header? Optional in APA but common in software reports
-                p = hdr_cells[idx].paragraphs[0]
-                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                p.runs[0].bold = True
-                p.paragraph_format.line_spacing = 1.0
+                hdr_cells[idx].paragraphs[0].runs[0].bold = True
+                set_cell_border(hdr_cells[idx], top={"sz": 12, "val": "single", "color": "000000"}, bottom={"sz": 12, "val": "single", "color": "000000"})
                 
-                # Header Horizontal Lines (Top and Bottom)
-                set_cell_border(hdr_cells[idx], 
-                    top={"sz": 4, "val": "single", "color": "000000"}, 
-                    bottom={"sz": 4, "val": "single", "color": "000000"}
-                )
-                
-            # Rows Formatting
+            # Rows
             for r_idx, row_data in enumerate(rows):
                 row_cells = table.rows[r_idx + 1].cells
                 for c_idx, col in enumerate(columns):
-                    val = row_data.get(col, "")
-                    row_cells[c_idx].text = str(val) if val is not None else "."
-                    p = row_cells[c_idx].paragraphs[0]
-                    p.paragraph_format.line_spacing = 1.0
-                    
-                    # Bottom Horizontal Line for last row
+                    row_cells[c_idx].text = str(row_data.get(col, ""))
                     if r_idx == len(rows) - 1:
-                        set_cell_border(row_cells[c_idx], 
-                            bottom={"sz": 4, "val": "single", "color": "000000"}
-                        )
+                        set_cell_border(row_cells[c_idx], bottom={"sz": 12, "val": "single", "color": "000000"})
             
-            # --- APA 7 Table Notes ---
+            # Footnotes
             footnotes = content.get("footnotes", [])
-            if footnotes:
-                note_p = doc.add_paragraph()
-                note_p.paragraph_format.line_spacing = 1.0
-                note_run = note_p.add_run("Note. ")
-                note_run.italic = True
-                note_p.add_run("; ".join(footnotes))
-            
-            doc.add_paragraph() # Spacer after table
-            table_counter += 1
+            for fn in footnotes:
+                p = doc.add_paragraph(f"Note. {fn}")
+                p.runs[0].italic = True
                 
         elif b_type == "chart":
             doc.add_heading(b_title, level=2)
+            
             chart_type = content.get("chart_type", "bar")
             data = content.get("data", [])
             config = content.get("config", {})
@@ -175,41 +103,20 @@ def generate_docx(result: dict) -> bytes:
                 doc.add_paragraph(f"[Chart generation failed: {str(e)}]")
                 
         elif b_type == "text":
+            doc.add_heading(b_title, level=2)
             doc.add_paragraph(content.get("text", ""))
             
-    # 4. Academic Interpretation (APA write-up)
+    # 3. Interpretation (APA write-up)
     interp = result.get("interpretation")
-    lang = result.get("metadata", {}).get("language", "en")
-    
-    if interp:
-        doc.add_page_break()
-        title = "Raporlama ve Yorumlama" if lang == 'tr' else "Result Interpretation"
-        h = doc.add_heading(title, level=1)
-        h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    if interp and interp.get("academic_sentence"):
+        doc.add_heading("Reporting (APA Style)", level=2)
+        p = doc.add_paragraph(interp.get("academic_sentence", ""))
+        p.paragraph_format.first_line_indent = Inches(0.5)
+        p.paragraph_format.line_spacing = 2.0
         
-        # Summary
-        sum_text = interp.get(f"summary_{lang}", interp.get("summary_en", ""))
-        if sum_text:
-            p_sum = doc.add_paragraph()
-            p_sum.add_run(f"{'Özet' if lang == 'tr' else 'Summary'}: ").bold = True
-            p_sum.add_run(sum_text).italic = True
-            p_sum.paragraph_format.line_spacing = 1.5
-            p_sum.paragraph_format.space_after = Pt(12)
-
-        # Academic sentence
-        acad_text = interp.get(f"academic_sentence_{lang}", interp.get("academic_sentence_en", ""))
-        if acad_text:
-            p_acad = doc.add_paragraph(acad_text)
-            p_acad.paragraph_format.first_line_indent = Inches(0.5)
-            p_acad.paragraph_format.line_spacing = 2.0
-        
-    # 5. Professional Footer
-    doc.add_paragraph()
-    footer_p = doc.add_paragraph()
-    footer_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    footer_run = footer_p.add_run(f"Generated by Kaless Advanced Statistics Engine\nReport Hash: {os.urandom(4).hex().upper()}")
-    footer_run.font.size = Pt(8)
-    footer_run.font.color.rgb = RGBColor(0x80, 0x80, 0x80)
+    # 4. Metadata Footer
+    meta = result.get("metadata", {})
+    doc.add_paragraph(f"Generated by KALESS Engine on {meta.get('timestamp', 'Unknown Date')}")
     
     buffer = io.BytesIO()
     doc.save(buffer)

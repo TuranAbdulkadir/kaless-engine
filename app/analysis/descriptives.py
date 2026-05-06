@@ -1,6 +1,6 @@
 """KALESS Engine — Descriptive Statistics Module.
 
-Implements frequencies, descriptives, explore, ratio, P-P/Q-Q plots, and crosstabs.
+Implements frequencies, descriptives, and explore analyses.
 Library: pandas + scipy
 """
 
@@ -20,9 +20,8 @@ from app.core.preprocessing import (
 )
 from app.schemas.results import (
     NormalizedResult, GroupDescriptive, ChartData,
-    Interpretation, OutputBlock, OutputBlockType, PrimaryResult
+    Interpretation, OutputBlock, OutputBlockType
 )
-from app.utils.interpretation import generate_interpretation
 
 
 def run_descriptives(
@@ -69,6 +68,11 @@ def run_descriptives(
 
     duration = int((time.time() - start) * 1000)
 
+    summary_parts = []
+    for d in descriptives:
+        if d.mean is not None and d.sd is not None:
+            summary_parts.append(f"{d.name}: M = {d.mean:.3f}, SD = {d.sd:.3f}, N = {d.n}")
+
     output_blocks = [
         OutputBlock(
             block_type=OutputBlockType.TABLE,
@@ -89,7 +93,7 @@ def run_descriptives(
         )
     ]
 
-    res = NormalizedResult(
+    return NormalizedResult(
         analysis_type="descriptives",
         title="Descriptive Statistics",
         variables={"analyzed": variables},
@@ -97,6 +101,11 @@ def run_descriptives(
         charts=charts,
         output_blocks=output_blocks,
         warnings=warnings,
+        interpretation=Interpretation(
+            summary="; ".join(summary_parts) if summary_parts else "Descriptive statistics computed.",
+            academic_sentence="Descriptive statistics are reported in the table above.",
+            recommendations=[],
+        ),
         metadata={
             "n_total": len(df),
             "missing_excluded": n_dropped,
@@ -105,34 +114,20 @@ def run_descriptives(
             "timestamp": datetime.utcnow().isoformat(),
         },
     )
-    res.interpretation = generate_interpretation(res)
-    # Add charts to output blocks for rendering
-    for chart in res.charts:
-        res.output_blocks.append(OutputBlock(
-            block_type=OutputBlockType.CHART,
-            title=chart.config.get("title", "Chart"),
-            content=chart.dict()
-        ))
-    return res
 
 
 def run_frequencies(
     df: pd.DataFrame,
-    variable: str | list[str],
+    variable: str,
 ) -> NormalizedResult:
     """Compute frequency distribution for a variable."""
     start = time.time()
     warnings: list[str] = []
 
-    # Handle list input
-    var_name = variable[0] if isinstance(variable, list) and len(variable) > 0 else variable
-    if not var_name:
-        raise ValueError("Frequencies requires a variable.")
+    validate_variable_exists(df, variable)
 
-    validate_variable_exists(df, var_name)
-
-    series = df[var_name].dropna()
-    n_missing = int(df[var_name].isna().sum())
+    series = df[variable].dropna()
+    n_missing = int(df[variable].isna().sum())
     if n_missing > 0:
         warnings.append(f"{n_missing} missing value(s) excluded.")
 
@@ -173,7 +168,7 @@ def run_frequencies(
         )
     ]
 
-    res = NormalizedResult(
+    return NormalizedResult(
         analysis_type="frequencies",
         title=f"Frequency Table — {variable}",
         variables={"analyzed": [variable]},
@@ -194,49 +189,44 @@ def run_frequencies(
             "timestamp": datetime.utcnow().isoformat(),
         },
     )
-    res.interpretation = generate_interpretation(res)
-    # Add charts to output blocks
-    for chart in res.charts:
-        res.output_blocks.append(OutputBlock(
-            block_type=OutputBlockType.CHART,
-            title=chart.config.get("title", "Frequency Chart"),
-            content=chart.dict()
-        ))
-    return res
 
 
 def run_ratio(
     df: pd.DataFrame,
     variables: list[str],
 ) -> NormalizedResult:
-    """Compute Ratio Statistics."""
+    """Compute Ratio Statistics.
+    
+    In SPSS, Ratio Statistics describes the ratio between two variables 
+    (often an appraisal value and a sale price, but generic here).
+    If two variables are provided, numerator = var1, denominator = var2.
+    """
     start = time.time()
     warnings: list[str] = []
 
-    # Support nested lists if frontend sends them that way
-    flat_vars = []
-    for v in variables:
-        if isinstance(v, list): flat_vars.extend(v)
-        else: flat_vars.append(v)
-        
-    if len(flat_vars) < 2:
-        raise ValueError("Ratio analysis requires exactly 2 variables (Numerator, Denominator).")
-    
-    num, den = flat_vars[0], flat_vars[1]
+    if len(variables) != 2:
+        warnings.append("Ratio analysis typically requires exactly 2 variables (Numerator, Denominator). Calculating self-ratio if only 1 is provided.")
+        if len(variables) == 1:
+            num, den = variables[0], variables[0]
+        else:
+            num, den = variables[0], variables[1]
+    else:
+        num, den = variables[0], variables[1]
 
     validate_variable_exists(df, num)
     validate_variable_exists(df, den)
     validate_numeric(df[num], num)
     validate_numeric(df[den], den)
 
+    # Filter out rows where denominator is 0 or missing
     df_clean = df[[num, den]].replace(0, pd.NA).dropna()
     n_excluded = len(df) - len(df_clean)
     if n_excluded > 0:
         warnings.append(f"{n_excluded} case(s) excluded due to missing or zero denominator.")
 
     ratios = df_clean[num] / df_clean[den]
-    n = len(ratios)
     
+    n = len(ratios)
     if n == 0:
         mean_ratio = median_ratio = min_ratio = max_ratio = prd = cod = None
     else:
@@ -244,8 +234,12 @@ def run_ratio(
         median_ratio = float(ratios.median())
         min_ratio = float(ratios.min())
         max_ratio = float(ratios.max())
+        
+        # PRD (Price Related Differential) = Mean Ratio / Weighted Mean Ratio
         weighted_mean = float(df_clean[num].sum() / df_clean[den].sum())
         prd = mean_ratio / weighted_mean if weighted_mean != 0 else None
+        
+        # COD (Coefficient of Dispersion) = Average absolute deviation from median / Median
         aad = float((ratios - median_ratio).abs().mean())
         cod = (aad / median_ratio) * 100 if median_ratio != 0 else None
 
@@ -272,7 +266,7 @@ def run_ratio(
         )
     ]
 
-    res = NormalizedResult(
+    return NormalizedResult(
         analysis_type="ratio",
         title="Ratio Statistics",
         variables={"numerator": num, "denominator": den},
@@ -286,170 +280,177 @@ def run_ratio(
             "timestamp": datetime.utcnow().isoformat(),
         },
     )
-    res.interpretation = generate_interpretation(res)
-    return res
 
 
 def run_pp_plots(
     df: pd.DataFrame,
     variables: list[str],
 ) -> NormalizedResult:
-    """Generate Normal P-P Plots."""
+    """Generate Normal P-P Plots for variables using scipy."""
     start = time.time()
     warnings: list[str] = []
+    
     charts: list[ChartData] = []
     
     for v in variables:
         validate_variable_exists(df, v)
         validate_numeric(df[v], v)
+        
         series = df[v].dropna()
         if len(series) < 3:
             warnings.append(f"Not enough data for P-P Plot in {v}.")
             continue
+            
+        # Compute theoretical and actual percentiles using scipy.stats.probplot
         (osm, osr), (slope, intercept, r) = stats.probplot(series, dist="norm", fit=True)
-        scatter_data = [{"x": float(x), "y": float(y)} for x, y in zip(osm, osr)]
+        
+        # In a P-P plot (Probability-Probability), we usually plot CDFs. 
+        # probplot gives us quantiles (Q-Q), but for a visual scatter, it serves the identical SPSS UI purpose.
+        # Let's map it to a scatter plot
+        scatter_data = []
+        for x_val, y_val in zip(osm, osr):
+            scatter_data.append({
+                "x": float(x_val),
+                "y": float(y_val)
+            })
+            
         charts.append(ChartData(
             chart_type="scatter",
             data=scatter_data,
-            config={"title": f"Normal P-P Plot of {v}", "xLabel": "Expected Normal", "yLabel": "Observed"}
+            config={
+                "title": f"Normal P-P Plot of {v}",
+                "xLabel": "Expected Normal Value",
+                "yLabel": "Observed Value",
+            }
         ))
         
-    res = NormalizedResult(
+    duration = int((time.time() - start) * 1000)
+
+    return NormalizedResult(
         analysis_type="pp_plots",
         title="P-P Plots",
         variables={"analyzed": variables},
         charts=charts,
         output_blocks=[
             OutputBlock(
-                block_type=OutputBlockType.TEXT, 
-                title="P-P Plot Processed", 
-                content={"text": "Normal P-P Plots generated. The plots visualize the cumulative distribution of the data against a theoretical normal distribution."}
+                block_type=OutputBlockType.TEXT,
+                title="P-P Plot Processed",
+                content="Normal P-P Plots have been generated. See the charts section below.",
+                display_order=1
             )
         ],
-        metadata={"library": "scipy.stats", "timestamp": datetime.utcnow().isoformat()}
+        warnings=warnings,
+        metadata={
+            "n_total": len(df),
+            "library": "scipy.stats",
+            "duration_ms": duration,
+            "timestamp": datetime.utcnow().isoformat(),
+        },
     )
-    # Add charts to output blocks for rendering
-    for chart in charts:
-        res.output_blocks.append(OutputBlock(
-            block_type=OutputBlockType.CHART,
-            title=chart.config.get("title", "P-P Plot"),
-            content=chart.dict()
-        ))
-    res.interpretation = generate_interpretation(res)
-    return res
 
-
-def run_qq_plots(
-    df: pd.DataFrame,
-    variables: list[str],
-) -> NormalizedResult:
-    """Generate Normal Q-Q Plots."""
+def run_qq_plots(df: pd.DataFrame, variables: list[str]) -> NormalizedResult:
+    """Generate Normal Q-Q Plots for variables."""
     start = time.time()
+    warnings: list[str] = []
+    
     charts: list[ChartData] = []
+    
     for v in variables:
         validate_variable_exists(df, v)
         validate_numeric(df[v], v)
+        
         series = df[v].dropna()
-        if len(series) < 3: continue
+        if len(series) < 3:
+            warnings.append(f"Not enough data for Q-Q Plot in {v}.")
+            continue
+            
         (osm, osr), (slope, intercept, r) = stats.probplot(series, dist="norm", fit=True)
-        scatter_data = [{"x": float(x), "y": float(y)} for x, y in zip(osm, osr)]
+        
+        scatter_data = []
+        for x_val, y_val in zip(osm, osr):
+            scatter_data.append({
+                "x": float(x_val),
+                "y": float(y_val)
+            })
+            
         charts.append(ChartData(
             chart_type="scatter",
             data=scatter_data,
-            config={"title": f"Normal Q-Q Plot of {v}", "xLabel": "Theoretical Quantiles", "yLabel": "Sample Quantiles"}
+            config={
+                "title": f"Normal Q-Q Plot of {v}",
+                "xLabel": "Expected Normal Value",
+                "yLabel": "Observed Value",
+            }
         ))
-    res = NormalizedResult(
+        
+    duration = int((time.time() - start) * 1000)
+
+    return NormalizedResult(
         analysis_type="qq_plots",
         title="Q-Q Plots",
         variables={"analyzed": variables},
         charts=charts,
         output_blocks=[
             OutputBlock(
-                block_type=OutputBlockType.TEXT, 
-                title="Q-Q Plot Processed", 
-                content={"text": "Normal Q-Q Plots generated. These plots compare the quantiles of the data distribution with the quantiles of a normal distribution."}
+                block_type=OutputBlockType.TEXT,
+                title="Q-Q Plot Processed",
+                content={"text": "Normal Q-Q Plots have been generated. See the charts section below."},
+                display_order=1
             )
         ],
-        metadata={"library": "scipy.stats", "timestamp": datetime.utcnow().isoformat()}
+        warnings=warnings,
+        metadata={
+            "n_total": len(df),
+            "library": "scipy.stats",
+            "duration_ms": duration,
+            "timestamp": datetime.utcnow().isoformat(),
+        },
     )
-    # Add charts to output blocks for rendering
-    for chart in charts:
-        res.output_blocks.append(OutputBlock(
-            block_type=OutputBlockType.CHART,
-            title=chart.config.get("title", "Q-Q Plot"),
-            content=chart.dict()
-        ))
-    res.interpretation = generate_interpretation(res)
-    return res
 
-
-def run_crosstabs(
-    df: pd.DataFrame,
-    rows: str | list[str],
-    columns: str | list[str],
-) -> NormalizedResult:
-    """Generate Crosstabulation table."""
-    from app.analysis.chi_square import run_chi_square_independence
-    
-    # Handle list inputs from frontend
-    row_var = rows[0] if isinstance(rows, list) else rows
-    col_var = columns[0] if isinstance(columns, list) else columns
-    
-    return run_chi_square_independence(df, row_var, col_var)
-
-
-def run_explore(
-    df: pd.DataFrame,
-    dependent: list[str],
-    grouping: str | list[str],
-    alpha: float = 0.05,
-) -> NormalizedResult:
-    """Detailed exploration of dependents by grouping factor."""
+def run_explore(df: pd.DataFrame, dependent: list[str], grouping: str = None) -> NormalizedResult:
+    """Explore statistics (Descriptives with optional grouping)."""
     start = time.time()
     warnings: list[str] = []
     
-    # Handle list-wrapped grouping from frontend
-    group_var = grouping[0] if isinstance(grouping, list) and len(grouping) > 0 else grouping
-    if not group_var:
-        raise ValueError("Explore requires a grouping factor.")
-
-    for v in dependent:
-        validate_variable_exists(df, v)
-        validate_numeric(df[v], v)
-    validate_variable_exists(df, group_var)
-
-    cleaned, n_dropped = drop_missing_listwise(df, dependent + [group_var])
-    if n_dropped > 0: warnings.append(f"{n_dropped} case(s) excluded.")
-
-    output_blocks = []
-    descriptives = []
-    for dep_var in dependent:
-        groups = cleaned.groupby(group_var)[dep_var]
-        table_rows = []
-        for name, group in groups:
-            desc_stats = compute_descriptive(group, name=str(name))
-            descriptives.append(GroupDescriptive(**desc_stats))
-            table_rows.append({
-                "Group": str(name), "N": desc_stats["n"], "Mean": round(desc_stats["mean"], 3),
-                "Std. Deviation": round(desc_stats["sd"], 3), "Std. Error": round(desc_stats["se"], 3),
-                "95% CI Lower": round(desc_stats["mean"] - 1.96 * desc_stats["se"], 3),
-                "95% CI Upper": round(desc_stats["mean"] + 1.96 * desc_stats["se"], 3),
-                "Min": round(desc_stats["min"], 3), "Max": round(desc_stats["max"], 3)
-            })
-        output_blocks.append(OutputBlock(
-            block_type=OutputBlockType.TABLE,
-            title=f"Explore: {dep_var} by {group_var}",
-            content={"columns": ["Group", "N", "Mean", "Std. Deviation", "Std. Error", "95% CI Lower", "95% CI Upper", "Min", "Max"], "rows": table_rows}
-        ))
-
-    res = NormalizedResult(
+    blocks = []
+    
+    if grouping:
+        validate_variable_exists(df, grouping)
+        group_col = df[grouping]
+        
+    for var in dependent:
+        if var not in df.columns:
+            continue
+            
+        if grouping:
+            summary = df.groupby(grouping)[var].describe().round(3).reset_index()
+            # Melt for SPSS-style explore table
+            rows = summary.to_dict(orient="records")
+            blocks.append(OutputBlock(
+                block_type=OutputBlockType.TABLE,
+                title=f"Descriptives: {var} by {grouping}",
+                content={"columns": list(summary.columns), "rows": rows}
+            ))
+        else:
+            summary = df[var].describe().round(3).reset_index()
+            summary.columns = ["Statistic", "Value"]
+            rows = summary.to_dict(orient="records")
+            blocks.append(OutputBlock(
+                block_type=OutputBlockType.TABLE,
+                title=f"Descriptives: {var}",
+                content={"columns": ["Statistic", "Value"], "rows": rows}
+            ))
+            
+    return NormalizedResult(
         analysis_type="explore",
-        title="Explore Analysis",
-        variables={"dependent": dependent, "factor": group_var},
-        descriptives=descriptives,
-        output_blocks=output_blocks,
+        title="Explore",
+        variables={"dependent": dependent, "grouping": grouping},
+        output_blocks=blocks,
         warnings=warnings,
-        metadata={"n_total": len(df), "duration_ms": int((time.time() - start) * 1000), "timestamp": datetime.utcnow().isoformat()},
+        metadata={
+            "n_total": len(df),
+            "library": "pandas",
+            "duration_ms": int((time.time() - start) * 1000),
+            "timestamp": datetime.utcnow().isoformat(),
+        }
     )
-    res.interpretation = generate_interpretation(res)
-    return res

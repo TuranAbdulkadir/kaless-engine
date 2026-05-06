@@ -2,36 +2,20 @@
 
 import time
 from datetime import datetime
-from typing import Any
 import pandas as pd
 from scipy import stats
 
 from app.core.preprocessing import validate_variable_exists, validate_numeric, drop_missing_listwise
 from app.schemas.results import NormalizedResult, PrimaryResult, GroupDescriptive, SignificanceLevel, OutputBlock, OutputBlockType
-from app.utils.interpretation import generate_interpretation
 
 def get_significance_level(p: float, alpha: float = 0.05) -> SignificanceLevel:
     if p < alpha:
         return SignificanceLevel.SIGNIFICANT
     return SignificanceLevel.NOT_SIGNIFICANT
 
-def calculate_independent_t(
-    df: pd.DataFrame, 
-    test_variable: str | list[str], 
-    grouping_variable: str | list[str], 
-    group1: Any, 
-    group2: Any, 
-    alpha: float = 0.05
-) -> NormalizedResult:
-    """Computes Independent Samples T-Test."""
+def calculate_independent_t(df: pd.DataFrame, test_var: str, group_var: str, group1_val, group2_val, alpha: float = 0.05) -> NormalizedResult:
     start = time.time()
     warnings = []
-    
-    # Handle list inputs
-    test_var = test_variable[0] if isinstance(test_variable, list) and len(test_variable) > 0 else test_variable
-    group_var = grouping_variable[0] if isinstance(grouping_variable, list) and len(grouping_variable) > 0 else grouping_variable
-    group1_val = group1[0] if isinstance(group1, list) and len(group1) > 0 else group1
-    group2_val = group2[0] if isinstance(group2, list) and len(group2) > 0 else group2
     
     try:
         import numpy as np
@@ -148,7 +132,7 @@ def calculate_independent_t(
             )
         ]
         
-        res = NormalizedResult(
+        return NormalizedResult(
             analysis_type="independent_t",
             title="Independent Samples T-Test",
             variables={"test_variable": test_var, "grouping_variable": group_var},
@@ -158,24 +142,12 @@ def calculate_independent_t(
             warnings=warnings,
             metadata={"n_total": len(df), "valid_n": len(cleaned), "duration_ms": int((time.time() - start) * 1000), "timestamp": datetime.utcnow().isoformat()}
         )
-        res.interpretation = generate_interpretation(res)
-        return res
     except Exception as e:
         raise ValueError(f"Independent T-Test failed: {str(e)}")
 
-def calculate_paired_t(
-    df: pd.DataFrame, 
-    variable1: str | list[str], 
-    variable2: str | list[str], 
-    alpha: float = 0.05
-) -> NormalizedResult:
-    """Computes Paired Samples T-Test."""
+def calculate_paired_t(df: pd.DataFrame, var1: str, var2: str, alpha: float = 0.05) -> NormalizedResult:
     start = time.time()
     warnings = []
-    
-    # Handle list inputs
-    var1 = variable1[0] if isinstance(variable1, list) and len(variable1) > 0 else variable1
-    var2 = variable2[0] if isinstance(variable2, list) and len(variable2) > 0 else variable2
     
     try:
         validate_variable_exists(df, var1)
@@ -230,7 +202,7 @@ def calculate_paired_t(
             )
         ]
         
-        res = NormalizedResult(
+        return NormalizedResult(
             analysis_type="paired_t",
             title="Paired Samples T-Test",
             variables={"pair": [var1, var2]},
@@ -240,29 +212,16 @@ def calculate_paired_t(
             warnings=warnings,
             metadata={"n_total": len(df), "valid_n": len(cleaned), "duration_ms": int((time.time() - start) * 1000), "timestamp": datetime.utcnow().isoformat()}
         )
-        res.interpretation = generate_interpretation(res)
-        return res
     except Exception as e:
         raise ValueError(f"Paired T-Test failed: {str(e)}")
-def run_one_sample_t_test(
-    df: pd.DataFrame, 
-    variable: str | list[str], 
-    test_value: float = 0.0, 
-    alpha: float = 0.05
-) -> NormalizedResult:
-    """Computes One-Sample T-Test."""
+def run_one_sample_t_test(df: pd.DataFrame, variable: str, test_value: float = 0.0, alpha: float = 0.05) -> NormalizedResult:
     start = time.time()
     warnings = []
 
-    # Handle list input
-    var_name = variable[0] if isinstance(variable, list) and len(variable) > 0 else variable
-    if not var_name:
-        raise ValueError("One-Sample T-Test requires a variable.")
+    validate_variable_exists(df, variable)
+    validate_numeric(df[variable], variable)
 
-    validate_variable_exists(df, var_name)
-    validate_numeric(df[var_name], var_name)
-
-    cleaned = df[var_name].dropna()
+    cleaned = df[variable].dropna()
     valid_n = len(cleaned)
 
     if valid_n < 2:
@@ -285,7 +244,7 @@ def run_one_sample_t_test(
     }]
 
     one_sample_test = [{
-        "Variable": var_name,
+        "Variable": variable,
         "t": round(t_stat, 3),
         "df": df_val,
         "Sig. (2-tailed)": round(p_val, 3),
@@ -313,28 +272,15 @@ def run_one_sample_t_test(
     ]
 
     duration = int((time.time() - start) * 1000)
-    res = NormalizedResult(
+    return NormalizedResult(
         analysis_type="one_sample_t_test",
         title="One-Sample T Test",
-        variables={"test": [str(var_name)]},
-        descriptives=[GroupDescriptive(name=str(var_name), n=valid_n, mean=mean, sd=std)],
+        variables={"test": [variable]},
         output_blocks=output_blocks,
         warnings=warnings,
-        primary=PrimaryResult(
-            statistic_name="t",
-            statistic_value=float(t_stat),
-            df=float(df_val),
-            p_value=float(p_val),
-            p_value_formatted=f"p < .001" if p_val < 0.001 else f"p = {p_val:.3f}",
-            significance=get_significance_level(p_val, alpha),
-            alpha=alpha
-        ),
         metadata={
             "valid_n": valid_n,
-            "test_value": test_value,
             "duration_ms": duration,
             "timestamp": datetime.utcnow().isoformat()
         }
     )
-    res.interpretation = generate_interpretation(res)
-    return res

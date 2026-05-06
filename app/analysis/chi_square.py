@@ -20,40 +20,27 @@ from app.core.assumptions import check_independence_expected_freq, build_assumpt
 from app.core.effect_sizes import cramers_v
 from app.core.interpretation import determine_significance, interpret_chi_square, format_p
 from app.schemas.results import (
-    NormalizedResult, PrimaryResult, ChartData, OutputBlock, OutputBlockType
+    NormalizedResult, PrimaryResult, ChartData,
 )
 
 
 def run_chi_square_independence(
     df: pd.DataFrame,
-    variable1: str | list[str] = None,
-    variable2: str | list[str] = None,
-    rows: str | list[str] = None,
-    columns: str | list[str] = None,
+    variable1: str,
+    variable2: str,
     alpha: float = 0.05,
 ) -> NormalizedResult:
-    """Chi-square test of independence. Handles both variable1/2 and rows/columns naming."""
-    # Resolve aliases
-    v1 = variable1 if variable1 is not None else rows
-    v2 = variable2 if variable2 is not None else columns
-    
-    # Handle list-wrapped single strings from frontend
-    v1 = v1[0] if isinstance(v1, list) and len(v1) > 0 else v1
-    v2 = v2[0] if isinstance(v2, list) and len(v2) > 0 else v2
-
-    if v1 is None or v2 is None:
-        raise ValueError("Chi-square requires two variables (variable1/variable2 or rows/columns).")
-
+    """Chi-square test of independence between two categorical variables."""
     start = time.time()
     warnings: list[str] = []
 
-    validate_variable_exists(df, v1)
-    validate_variable_exists(df, v2)
-    validate_categorical(df[v1], v1)
-    validate_categorical(df[v2], v2)
+    validate_variable_exists(df, variable1)
+    validate_variable_exists(df, variable2)
+    validate_categorical(df[variable1], variable1)
+    validate_categorical(df[variable2], variable2)
 
     # Drop rows with missing in either variable
-    clean = df[[v1, v2]].dropna()
+    clean = df[[variable1, variable2]].dropna()
     n_dropped = len(df) - len(clean)
     if n_dropped > 0:
         warnings.append(f"{n_dropped} case(s) excluded due to missing values.")
@@ -62,7 +49,7 @@ def run_chi_square_independence(
     validate_min_n(n, 5, "chi-square test")
 
     # Contingency table
-    ct = pd.crosstab(clean[v1], clean[v2])
+    ct = pd.crosstab(clean[variable1], clean[variable2])
 
     # Test
     chi2, p_value, dof, expected = stats.chi2_contingency(ct)
@@ -78,53 +65,20 @@ def run_chi_square_independence(
     min_dim = min(ct.shape[0], ct.shape[1])
     effect = cramers_v(float(chi2), n, min_dim)
 
-    # Crosstab data for output blocks
-    table_rows = []
-    for i, row_val in enumerate(ct.index):
-        row_dict = {"Row": str(row_val)}
-        for j, col_val in enumerate(ct.columns):
-            row_dict[str(col_val)] = f"{ct.iloc[i, j]} (Exp: {expected[i, j]:.1f})"
-        row_dict["Total"] = int(ct.sum(axis=1).iloc[i])
-        table_rows.append(row_dict)
-    
-    # Add column totals
-    col_totals = {"Row": "Total"}
-    for j, col_val in enumerate(ct.columns):
-        col_totals[str(col_val)] = int(ct.sum(axis=0).iloc[j])
-    col_totals["Total"] = n
-    table_rows.append(col_totals)
+    # Crosstab data
+    observed_dict = {
+        "rows": ct.index.tolist(),
+        "columns": ct.columns.tolist(),
+        "observed": ct.values.tolist(),
+        "expected": expected.tolist(),
+        "row_totals": ct.sum(axis=1).tolist(),
+        "column_totals": ct.sum(axis=0).tolist(),
+        "grand_total": n,
+    }
 
-    output_blocks = [
-        OutputBlock(
-            block_type=OutputBlockType.TABLE,
-            title=f"Crosstabulation: {v1} * {v2}",
-            content={
-                "columns": ["Row"] + [str(c) for c in ct.columns] + ["Total"],
-                "rows": table_rows
-            }
-        ),
-        OutputBlock(
-            block_type=OutputBlockType.TABLE,
-            title="Chi-Square Tests",
-            content={
-                "columns": ["Test", "Value", "df", "Asymp. Sig. (2-sided)"],
-                "rows": [
-                    {
-                        "Test": "Pearson Chi-Square",
-                        "Value": f"{chi2:.3f}",
-                        "df": int(dof),
-                        "Asymp. Sig. (2-sided)": format_p(p_value)
-                    },
-                    {
-                        "Test": "N of Valid Cases",
-                        "Value": str(n),
-                        "df": "",
-                        "Asymp. Sig. (2-sided)": ""
-                    }
-                ]
-            }
-        )
-    ]
+    # Stringify for JSON safety
+    observed_dict["rows"] = [str(r) for r in observed_dict["rows"]]
+    observed_dict["columns"] = [str(c) for c in observed_dict["columns"]]
 
     # Chart: stacked bar
     chart_data = []
@@ -133,30 +87,13 @@ def run_chi_square_independence(
         for col_val in ct.columns:
             row_data[str(col_val)] = int(ct.loc[row_val, col_val])
         chart_data.append(row_data)
-        
-    chart_obj = ChartData(
-        title="Observed Frequencies",
-        chart_type="bar",
-        data=chart_data,
-        config={"stacked": True, "xLabel": str(v1), "yLabel": "Frequency"}
-    )
-    
-    # Crucial: Append chart to output blocks so the React frontend renders it!
-    output_blocks.append(
-        OutputBlock(
-            block_type=OutputBlockType.CHART,
-            title="Observed Frequencies",
-            content=chart_obj.model_dump()
-        )
-    )
 
     duration = int((time.time() - start) * 1000)
 
-    from app.utils.interpretation import generate_interpretation
-    res = NormalizedResult(
+    return NormalizedResult(
         analysis_type="chi_square_independence",
-        title=f"Chi-Square Test of Independence — {v1} × {v2}",
-        variables={"variable1": str(v1), "variable2": str(v2)},
+        title=f"Chi-Square Test of Independence — {variable1} × {variable2}",
+        variables={"variable1": variable1, "variable2": variable2},
         assumptions=assumptions,
         primary=PrimaryResult(
             statistic_name="χ²",
@@ -165,18 +102,23 @@ def run_chi_square_independence(
             p_value=round(float(p_value), 6),
             p_value_formatted=format_p(float(p_value)),
             significance=sig,
+            alpha=alpha,
         ),
-        output_blocks=output_blocks,
-        charts=[chart_obj],
+        effect_size=effect,
+        crosstab=observed_dict,
+        charts=[ChartData(
+            chart_type="stacked_bar",
+            data=chart_data,
+            config={"title": f"{variable1} × {variable2}", "xLabel": variable1, "yLabel": "Count"},
+        )],
+        interpretation=interpret_chi_square(
+            float(chi2), float(dof), float(p_value), sig,
+            effect.value, effect.interpretation,
+        ),
         warnings=warnings,
         metadata={
-            "n_total": len(df),
-            "missing_excluded": n_dropped,
-            "valid_n": n,
-            "cramers_v": round(float(effect.value), 4) if effect else 0.0,
-            "duration_ms": duration,
+            "n_total": len(df), "missing_excluded": n_dropped,
+            "library": "scipy.stats", "duration_ms": duration,
             "timestamp": datetime.utcnow().isoformat(),
         },
     )
-    res.interpretation = generate_interpretation(res)
-    return res

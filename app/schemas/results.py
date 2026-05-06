@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -101,16 +101,15 @@ class ConfidenceInterval(BaseModel):
 
 
 class PrimaryResult(BaseModel):
-    """The main statistical test value (e.g., t, F, Chi-Square)."""
-    statistic_name: str
+    """The main statistical test result."""
+
+    statistic_name: str  # "t", "F", "χ²", "U", "W", "r", "rho", "tau"
     statistic_value: float
-    df: float
-    df2: Optional[float] = None # Added for ANOVA (df_within)
+    df: float | None = None
+    df2: float | None = None  # For F-tests
     p_value: float
     p_value_formatted: str  # "p = .017" or "p < .001"
     significance: SignificanceLevel
-    effect_size: Optional[float] = None
-    effect_size_type: Optional[str] = None
     alpha: float = 0.05
 
 
@@ -164,14 +163,11 @@ class PostHocPair(BaseModel):
 
 
 class Interpretation(BaseModel):
-    """Human-readable interpretation of results in multiple languages."""
+    """Human-readable interpretation of results."""
 
-    summary_en: str
-    summary_tr: str
-    academic_sentence_en: str
-    academic_sentence_tr: str
-    recommendations_en: list[str] = []
-    recommendations_tr: list[str] = []
+    summary: str  # Plain language
+    academic_sentence: str  # APA-style wording
+    recommendations: list[str] = []
 
 
 # --- Output Block ---
@@ -274,4 +270,3 @@ class NormalizedResult(BaseModel):
             "timestamp": datetime.utcnow().isoformat(),
         }
     )
-NormalizedResult.model_rebuild()

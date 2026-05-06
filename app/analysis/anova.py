@@ -10,24 +10,15 @@ from statsmodels.stats.multicomp import pairwise_tukeyhsd
 from app.core.preprocessing import validate_variable_exists
 from app.schemas.results import NormalizedResult
 
-def run_one_way_anova(
-    df: pd.DataFrame, 
-    dependent: str | list[str], 
-    grouping: str | list[str]
-) -> NormalizedResult:
-    """Computes One-Way ANOVA."""
+def run_one_way_anova(df: pd.DataFrame, dependent: str, factor: str) -> NormalizedResult:
     start = time.time()
     warnings: list[str] = []
 
-    # Handle list inputs
-    dep_var = dependent[0] if isinstance(dependent, list) and len(dependent) > 0 else dependent
-    group_var = grouping[0] if isinstance(grouping, list) and len(grouping) > 0 else grouping
-
-    validate_variable_exists(df, dep_var)
-    validate_variable_exists(df, group_var)
+    validate_variable_exists(df, dependent)
+    validate_variable_exists(df, factor)
 
     # Prepare data, drop missing values
-    sub_df = df[[dep_var, group_var]].dropna()
+    sub_df = df[[dependent, factor]].dropna()
     valid_n = len(sub_df)
     
     if valid_n < 3:
@@ -37,7 +28,7 @@ def run_one_way_anova(
         warnings.append(f"{len(df) - valid_n} case(s) excluded due to missing values.")
 
     # Group data
-    groups = sub_df.groupby(group_var)[dep_var]
+    groups = sub_df.groupby(factor)[dependent]
     group_data = [group.values for name, group in groups]
     group_names = list(groups.groups.keys())
 
@@ -48,7 +39,7 @@ def run_one_way_anova(
     f_stat, p_value = stats.f_oneway(*group_data)
 
     # Sum of Squares (Between and Within)
-    grand_mean = sub_df[dep_var].mean()
+    grand_mean = sub_df[dependent].mean()
     
     ss_between = sum(len(g) * (g.mean() - grand_mean)**2 for g in group_data)
     df_between = len(group_data) - 1
@@ -95,7 +86,7 @@ def run_one_way_anova(
             "content": {
                 "columns": ["Source", "Sum of Squares", "df", "Mean Square", "F", "Sig."],
                 "rows": anova_table,
-                "footnotes": [f"Dependent Variable: {dep_var}"]
+                "footnotes": [f"Dependent Variable: {dependent}"]
             }
         }
     ]
@@ -103,7 +94,7 @@ def run_one_way_anova(
     # Post-Hoc: Tukey HSD (if significant)
     if not np.isnan(p_value) and p_value < 0.05 and len(group_data) > 2:
         try:
-            tukey = pairwise_tukeyhsd(endog=sub_df[dep_var], groups=sub_df[group_var], alpha=0.05)
+            tukey = pairwise_tukeyhsd(endog=sub_df[dependent], groups=sub_df[factor], alpha=0.05)
             
             # The summary contains: group1, group2, meandiff, p-adj, lower, upper, reject
             res_data = tukey.summary().data
@@ -143,44 +134,13 @@ def run_one_way_anova(
         except Exception as e:
             warnings.append(f"Could not compute Tukey HSD Post-Hoc: {str(e)}")
 
-    # Descriptives for the groups
-    descriptives = []
-    for name, group in groups:
-        descriptives.append({
-            "name": str(name),
-            "n": len(group),
-            "mean": float(group.mean()),
-            "sd": float(group.std()) if len(group) > 1 else 0.0,
-            "se": float(group.std() / np.sqrt(len(group))) if len(group) > 1 else 0.0,
-            "min": float(group.min()),
-            "max": float(group.max())
-        })
-
-    # Prepare Primary Statistic
-    p_formatted = "p < .001" if p_value < 0.001 else f"p = {p_value:.3f}"
-    sig = "significant" if p_value < 0.05 else "not_significant"
-    
-    primary = {
-        "statistic_name": "F",
-        "statistic_value": float(f_stat),
-        "df": float(df_between),
-        "df2": float(df_within),
-        "p_value": float(p_value),
-        "p_value_formatted": p_formatted,
-        "significance": sig
-    }
-
     duration = int((time.time() - start) * 1000)
 
-    from app.utils.interpretation import generate_interpretation
-
-    res = NormalizedResult(
+    return NormalizedResult(
         analysis_type="one_way_anova",
         title="One-Way ANOVA",
-        variables={"dependent": [str(dep_var)], "grouping": [str(group_var)]},
-        descriptives=descriptives,
+        variables={"dependent": [dependent], "factor": [factor]},
         output_blocks=output_blocks,
-        primary=primary,
         warnings=warnings,
         metadata={
             "n_total": len(df),
@@ -190,5 +150,3 @@ def run_one_way_anova(
             "timestamp": datetime.utcnow().isoformat(),
         },
     )
-    res.interpretation = generate_interpretation(res)
-    return res

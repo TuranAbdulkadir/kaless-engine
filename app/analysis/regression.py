@@ -9,44 +9,29 @@ import statsmodels.api as sm
 from app.core.preprocessing import validate_variable_exists
 from app.schemas.results import NormalizedResult, OutputBlock, OutputBlockType
 
-def run_linear_regression(
-    df: pd.DataFrame, 
-    dependent: str | list[str], 
-    independent: list[str]
-) -> NormalizedResult:
-    """Computes Linear Regression with SPSS-style output."""
+def run_linear_regression(df: pd.DataFrame, dependent: str, independents: list[str]) -> NormalizedResult:
+    """Computes Linear Regression with SPSS-style output including the Holy Trinity tables."""
     start = time.time()
     warnings: list[str] = []
 
-    # Handle list-wrapped dependent
-    dep_var = dependent[0] if isinstance(dependent, list) and len(dependent) > 0 else dependent
-    # Ensure independent is a flat list
-    ind_vars = []
-    for i in independent:
-        if isinstance(i, list): ind_vars.extend(i)
-        else: ind_vars.append(i)
-
-    if not dep_var or len(ind_vars) == 0:
-        raise ValueError("Regression requires one dependent and at least one independent variable.")
-
-    validate_variable_exists(df, dep_var)
-    for var in ind_vars:
+    validate_variable_exists(df, dependent)
+    for var in independents:
         validate_variable_exists(df, var)
 
     # Prepare data, drop missing values listwise
-    vars_to_keep = [dep_var] + ind_vars
+    vars_to_keep = [dependent] + independents
     sub_df = df[vars_to_keep].dropna()
     valid_n = len(sub_df)
     
-    if valid_n < len(ind_vars) + 2:
+    if valid_n < len(independents) + 2:
         raise ValueError("Not enough valid cases to compute Linear Regression.")
 
     if len(sub_df) < len(df):
         warnings.append(f"{len(df) - valid_n} case(s) excluded due to missing values.")
 
     # Variables
-    y = sub_df[dep_var]
-    X = sub_df[ind_vars]
+    y = sub_df[dependent]
+    X = sub_df[independents]
 
     # Add constant for OLS (CRITICAL — ensures the intercept is modeled)
     X_with_const = sm.add_constant(X)
@@ -104,7 +89,7 @@ def run_linear_regression(
         std_betas = {}
 
     coefficients_rows = []
-    for var in ["const"] + ind_vars:
+    for var in ["const"] + independents:
         display_name = "(Constant)" if var == "const" else var
         b = results.params[var]
         se = results.bse[var]
@@ -130,7 +115,7 @@ def run_linear_regression(
             content={
                 "columns": ["Model", "R", "R Square", "Adjusted R Square", "Std. Error of the Estimate", "R Square Change", "F Change", "df1", "df2", "Sig. F Change"],
                 "rows": model_summary_rows,
-                "footnotes": [f"a. Predictors: (Constant), {', '.join(ind_vars)}"]
+                "footnotes": [f"a. Predictors: (Constant), {', '.join(independents)}"]
             }
         ),
         OutputBlock(
@@ -140,8 +125,8 @@ def run_linear_regression(
                 "columns": ["Model", "Sum of Squares", "df", "Mean Square", "F", "Sig."],
                 "rows": anova_rows,
                 "footnotes": [
-                    f"a. Dependent Variable: {dep_var}",
-                    f"b. Predictors: (Constant), {', '.join(ind_vars)}"
+                    f"a. Dependent Variable: {dependent}",
+                    f"b. Predictors: (Constant), {', '.join(independents)}"
                 ]
             }
         ),
@@ -151,7 +136,7 @@ def run_linear_regression(
             content={
                 "columns": ["Model", "B", "Std. Error", "Beta", "t", "Sig."],
                 "rows": coefficients_rows,
-                "footnotes": [f"a. Dependent Variable: {dep_var}"],
+                "footnotes": [f"a. Dependent Variable: {dependent}"],
                 "column_groups": [
                     {"label": "Unstandardized Coefficients", "columns": ["B", "Std. Error"]},
                     {"label": "Standardized Coefficients", "columns": ["Beta"]}
@@ -160,31 +145,12 @@ def run_linear_regression(
         )
     ]
 
-    from app.utils.interpretation import generate_interpretation
-
-    res = NormalizedResult(
+    return NormalizedResult(
         analysis_type="linear_regression",
         title="Regression",
-        variables={"dependent": [dep_var], "independent": ind_vars},
+        variables={"dependent": [dependent], "independent": independents},
         output_blocks=output_blocks,
         warnings=warnings,
-        primary={
-            "statistic_name": "F",
-            "statistic_value": float(results.fvalue),
-            "df": float(results.df_model),
-            "df2": float(results.df_resid),
-            "p_value": float(results.f_pvalue),
-            "p_value_formatted": "p < .001" if results.f_pvalue < 0.001 else f"p = {results.f_pvalue:.3f}",
-            "significance": "significant" if results.f_pvalue < 0.05 else "not_significant"
-        },
-        metadata={
-            "valid_n": valid_n, 
-            "duration_ms": duration, 
-            "timestamp": datetime.utcnow().isoformat(),
-            "r_squared": float(r_squared),
-            "adj_r_squared": float(adj_r_squared)
-        }
+        metadata={"valid_n": valid_n, "duration_ms": duration, "timestamp": datetime.utcnow().isoformat()}
     )
-    res.interpretation = generate_interpretation(res)
-    return res
 

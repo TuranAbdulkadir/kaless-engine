@@ -285,3 +285,155 @@ def run_glm_univariate(
             "timestamp": datetime.utcnow().isoformat(),
         },
     )
+
+def run_glm_multivariate(df: pd.DataFrame, dependent: list[str], fixed_factors: list[str], covariates: list[str] = None) -> NormalizedResult:
+    """Run Multivariate GLM (MANOVA)."""
+    start = time.time()
+    covariates = covariates or []
+    
+    if len(dependent) < 2:
+        raise ValueError("Multivariate GLM requires at least 2 dependent variables.")
+        
+    df_clean = df[dependent + fixed_factors + covariates].dropna()
+    n = len(df_clean)
+    
+    # Formula for MANOVA using statsmodels MANOVA
+    from statsmodels.multivariate.manova import MANOVA
+    
+    factor_terms = [f"C({f})" for f in fixed_factors]
+    formula_parts = factor_terms + covariates
+    # Main effects only for simplicity in MANOVA here
+    formula_str = f"{' + '.join(dependent)} ~ {' + '.join(formula_parts)}"
+    
+    try:
+        model = MANOVA.from_formula(formula_str, data=df_clean)
+        test_res = model.mv_test()
+    except Exception as e:
+        raise ValueError(f"MANOVA fitting failed: {str(e)}")
+        
+    # Extract Pillai's Trace, Wilks' Lambda, Hotelling's Trace, Roy's Largest Root
+    output_blocks = []
+    
+    for term in test_res.results.keys():
+        if term == "Intercept": continue
+        res_df = test_res.results[term]["stat"]
+        res_dict = res_df.reset_index().rename(columns={"index": "Statistic"}).to_dict(orient="records")
+        output_blocks.append(OutputBlock(
+            block_type=OutputBlockType.TABLE,
+            title=f"Multivariate Tests: {term}",
+            content={"columns": ["Statistic", "Value", "Num DF", "Den DF", "F Value", "Pr > F"], "rows": res_dict}
+        ))
+        
+    return NormalizedResult(
+        analysis_type="glm_multivariate",
+        title="Multivariate Analysis of Variance",
+        variables={"dependent": dependent, "fixed_factors": fixed_factors},
+        output_blocks=output_blocks,
+        metadata={
+            "n_total": len(df),
+            "library": "statsmodels.multivariate.manova",
+            "duration_ms": int((time.time() - start) * 1000),
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    )
+
+def run_glm_repeated(df: pd.DataFrame, within_subjects: list[str], between_subjects: list[str] = None) -> NormalizedResult:
+    """Run Repeated Measures GLM."""
+    start = time.time()
+    between_subjects = between_subjects or []
+    
+    if len(within_subjects) < 2:
+        raise ValueError("Repeated Measures requires at least 2 within-subjects variables.")
+        
+    import pingouin as pg
+    
+    # Pingouin requires long-format data for mixed ANOVA
+    df_clean = df[within_subjects + between_subjects].dropna().copy()
+    df_clean['Subject'] = range(len(df_clean))
+    
+    df_long = df_clean.melt(
+        id_vars=['Subject'] + between_subjects,
+        value_vars=within_subjects,
+        var_name='Time',
+        value_name='Score'
+    )
+    
+    try:
+        if between_subjects:
+            res = pg.mixed_anova(dv='Score', within='Time', between=between_subjects[0], subject='Subject', data=df_long)
+        else:
+            res = pg.rm_anova(dv='Score', within='Time', subject='Subject', data=df_long)
+    except Exception as e:
+        raise ValueError(f"Repeated Measures ANOVA failed: {str(e)}")
+        
+    rows = res.round(3).to_dict(orient="records")
+    
+    output_blocks = [
+        OutputBlock(
+            block_type=OutputBlockType.TABLE,
+            title="Tests of Within-Subjects Effects",
+            content={"columns": list(res.columns), "rows": rows}
+        )
+    ]
+    
+    return NormalizedResult(
+        analysis_type="glm_repeated",
+        title="Repeated Measures ANOVA",
+        variables={"within_subjects": within_subjects, "between_subjects": between_subjects},
+        output_blocks=output_blocks,
+        metadata={
+            "n_total": len(df),
+            "library": "pingouin",
+            "duration_ms": int((time.time() - start) * 1000),
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    )
+
+def run_glm_variance(df: pd.DataFrame, dependent: str, random_factors: list[str]) -> NormalizedResult:
+    """Run Variance Components."""
+    start = time.time()
+    
+    if not random_factors:
+        raise ValueError("Variance Components requires at least 1 random factor.")
+        
+    df_clean = df[[dependent] + random_factors].dropna()
+    
+    # Use mixedlm with only random effects to estimate variance components
+    import statsmodels.formula.api as smf
+    
+    formula = f"{dependent} ~ 1"
+    groups = df_clean[random_factors[0]]
+    
+    try:
+        model = smf.mixedlm(formula, df_clean, groups=groups)
+        result = model.fit()
+    except Exception as e:
+        raise ValueError(f"Variance Components failed: {str(e)}")
+        
+    variance_estimates = {
+        "Residual Variance": round(result.scale, 3),
+        f"Variance ({random_factors[0]})": round(result.cov_re.iloc[0, 0], 3) if not result.cov_re.empty else 0
+    }
+    
+    rows = [{"Source": k, "Estimate": v} for k, v in variance_estimates.items()]
+    
+    output_blocks = [
+        OutputBlock(
+            block_type=OutputBlockType.TABLE,
+            title="Variance Estimates",
+            content={"columns": ["Source", "Estimate"], "rows": rows}
+        )
+    ]
+    
+    return NormalizedResult(
+        analysis_type="glm_variance",
+        title="Variance Components",
+        variables={"dependent": dependent, "random_factors": random_factors},
+        output_blocks=output_blocks,
+        metadata={
+            "n_total": len(df),
+            "library": "statsmodels.formula.api.mixedlm",
+            "duration_ms": int((time.time() - start) * 1000),
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    )

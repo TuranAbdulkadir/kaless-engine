@@ -152,9 +152,7 @@ def run_reliability(df: pd.DataFrame, variables: list[str], item_deleted: bool =
 
     duration = int((time.time() - start) * 1000)
 
-    from app.utils.interpretation import generate_interpretation
-
-    res = NormalizedResult(
+    return NormalizedResult(
         analysis_type="reliability",
         title="Reliability Analysis",
         variables={"items": variables},
@@ -171,5 +169,3 @@ def run_reliability(df: pd.DataFrame, variables: list[str], item_deleted: bool =
             "timestamp": datetime.utcnow().isoformat(),
         },
     )
-    res.interpretation = generate_interpretation(res)
-    return res

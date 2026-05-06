@@ -318,9 +318,7 @@ def run_factor_analysis(
 
     duration = int((time.time() - start) * 1000)
 
-    from app.utils.interpretation import generate_interpretation
-
-    res = NormalizedResult(
+    return NormalizedResult(
         analysis_type="factor_analysis",
         title="Exploratory Factor Analysis (PCA)",
         variables={"items": variables},
@@ -328,6 +326,7 @@ def run_factor_analysis(
         eigenvalues=eigenvalues_list,
         variance_explained=variance_explained,
         output_blocks=output_blocks,
+        interpretation=interpretation,
         warnings=warnings,
         metadata={
             "n_total": len(df),
@@ -335,17 +334,11 @@ def run_factor_analysis(
             "n_components": n_components,
             "rotation": rotation,
             "kmo": round(kmo_overall, 3) if kmo_overall else None,
-            "bartlett_p": bartlett_p,
-            "bartlett_chi": bartlett_chi,
-            "bartlett_df": bartlett_df,
-            "cum_var": cum_var,
             "library": "factor_analyzer + numpy",
             "duration_ms": duration,
             "timestamp": datetime.utcnow().isoformat(),
         },
     )
-    res.interpretation = generate_interpretation(res)
-    return res
 
 
 def _varimax_rotation(loadings: np.ndarray, max_iter: int = 100, tol: float = 1e-6) -> np.ndarray:

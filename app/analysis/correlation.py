@@ -93,9 +93,7 @@ def calculate_correlation(df: pd.DataFrame, variables: list[str], method: str = 
             )
         ]
         
-        from app.utils.interpretation import generate_interpretation
-
-        res = NormalizedResult(
+        return NormalizedResult(
             analysis_type=f"{method}_correlation",
             title=f"{method.capitalize()} Correlations",
             variables={"analyzed": variables},
@@ -105,10 +103,7 @@ def calculate_correlation(df: pd.DataFrame, variables: list[str], method: str = 
                 "valid_n": n_valid,
                 "duration_ms": int((time.time() - start) * 1000),
                 "timestamp": datetime.utcnow().isoformat(),
-                "method": method
             },
         )
-        res.interpretation = generate_interpretation(res)
-        return res
     except Exception as e:
         raise ValueError(f"Correlation failed: {str(e)}")
